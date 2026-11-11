@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="token" content="{{TOKEN}}">
+<meta name="color-scheme" content="light dark">
+<title>Convertisseur</title>
+<link rel="icon" href="/web/icon.svg?v={{VERSION}}" type="image/svg+xml">
+<link rel="icon" href="/web/icon.png?v={{VERSION}}" type="image/png" sizes="256x256">
+<link rel="stylesheet" href="/web/app.css?v={{VERSION}}">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <img src="/web/icon.svg" alt="">
+      <div><b>Convertisseur</b><small>Tout format · 100 % local</small></div>
+    </div>
+    <label class="side-search">
+      <span class="side-search-icon" id="search-icon"></span>
+      <input type="search" id="nav-search" placeholder="Rechercher un outil…" aria-label="Rechercher un outil" autocomplete="off" spellcheck="false">
+      <kbd>Ctrl K</kbd>
+    </label>
+    <nav class="nav" id="nav" aria-label="Outils"></nav>
+    <div class="side-foot">
+      <div class="engines" id="tools"></div>
+      <button class="side-btn" id="btn-settings" type="button"></button>
+    </div>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+
+  <main class="main">
+    <header class="head">
+      <button class="icon-btn menu-btn" id="btn-menu" type="button" title="Outils"></button>
+      <div class="head-text">
+        <div class="eyebrow" id="eyebrow"></div>
+        <h1 id="title">Convertisseur universel</h1>
+        <p id="desc"></p>
+      </div>
+      <div class="head-actions">
+        <button class="btn ghost" id="btn-history" type="button"></button>
+        <button class="btn ghost" id="btn-folder" type="button"></button>
+      </div>
+    </header>
+
+    <div class="content" id="content">
+      <section class="drop" id="drop" tabindex="0" role="button" aria-label="Ajouter des fichiers"></section>
+      <section class="linkbar" id="linkbar" hidden>
+        <div class="link-art" id="link-art" hidden></div>
+        <form id="link-form" autocomplete="off">
+          <span class="linkbar-icon" id="link-icon"></span>
+          <input type="url" id="link-input" placeholder="Collez un lien…" aria-label="Lien à télécharger">
+          <button class="btn primary" type="submit" id="link-btn">Ajouter</button>
+        </form>
+        <p class="linkbar-note">Le téléchargement passe par Internet ; la conversion reste sur cet ordinateur.
+          À réserver aux contenus dont vous avez les droits (vos vidéos, licences libres…).</p>
+      </section>
+      <section class="popular" id="popular" hidden></section>
+      <section id="list-wrap" class="list-wrap" hidden>
+        <div class="list-head">
+          <div class="count" id="count"></div>
+          <div class="list-tools">
+            <button class="btn ghost sm" id="btn-bulk" type="button"></button>
+            <button class="btn ghost sm" id="btn-clear" type="button"></button>
+          </div>
+        </div>
+        <div id="list" class="list"></div>
+      </section>
+    </div>
+
+    <footer class="actionbar" id="actionbar" hidden>
+      <div class="combine" id="combine"></div>
+      <div class="grow"></div>
+      <div class="overall" id="overall" hidden><span id="overall-text"></span><i><b id="overall-bar"></b></i></div>
+      <button class="btn cta" id="btn-all" type="button"></button>
+    </footer>
+  </main>
+</div>
+
+<div class="drag-overlay" id="drag-overlay">
+  <div class="drag-card">
+    <div class="drag-glyph" id="drag-glyph"></div>
+    <b>Lâchez pour ajouter</b>
+    <small>Les fichiers restent sur cet ordinateur.</small>
+  </div>
+</div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<input type="file" id="file-input" multiple hidden>
+<script src="/web/app.js?v={{VERSION}}"></script>
+</body>
+</html>

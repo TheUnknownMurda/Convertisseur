@@ -1,0 +1,21 @@
+# Environnement Python et caches
+.venv/
+__pycache__/
+*.pyc
+
+# Modèles de transcription (téléchargés au premier usage)
+modeles/
+
+# Données personnelles de l'application (réglages, historique, journaux)
+config.json
+historique.json
+convertisseur.log
+installation.log
+installation-resume.txt
+.instance.json
+
+# Outils copiés à côté de l'application
+bin/
+
+# Installateur compilé (publié en release, pas dans le dépôt)
+dist/

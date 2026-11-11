@@ -1,0 +1,9 @@
+# Texte normalisé dans le dépôt ; scripts Windows extraits en CRLF (cmd lit mal les .bat en LF)
+* text=auto
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.iss text eol=crlf
+*.ico binary
+*.png binary
+*.bmp binary
