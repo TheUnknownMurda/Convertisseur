@@ -129,7 +129,7 @@ function Find-Python {
 
 function Test-AppModules {
     if (-not (Test-Path -LiteralPath $VenvPython)) { return $false }
-    & $VenvPython -c 'import flask, pymupdf, PIL, pillow_heif, pdf2docx, openpyxl, pptx, faster_whisper, yt_dlp, pysubs2, fontTools, yaml' 2>$null | Out-Null
+    & $VenvPython -c 'import flask, pymupdf, PIL, pillow_heif, pdf2docx, openpyxl, pptx, faster_whisper, yt_dlp, pysubs2, fontTools, yaml, segno, barcode, zxingcpp' 2>$null | Out-Null
     return ($LASTEXITCODE -eq 0)
 }
 

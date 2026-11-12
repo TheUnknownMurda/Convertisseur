@@ -88,6 +88,19 @@ def _img_save_opts(s, d, last):
     return o
 
 
+WM = ["wm_text", "wm_pos", "wm_size", "wm_opacity", "wm_color"]
+WM_MAIN = [{"id": x, "section": ""} for x in WM]            # outil « filigrane » : réglages au premier plan
+IMG_EDITS = ["img_resize", "img_ratio", "rotate", "img_adjust", *WM, "strip_meta"]
+TAG_FORMATS = {"mp3", "m4a", "m4b", "m4r", "flac", "ogg", "opus", "alac"}
+
+
+def _img_edit_opts(s, d, last):
+    o = _img_save_opts(s, d, last)
+    if last and d not in ("ico", "icns"):
+        o += IMG_EDITS
+    return o
+
+
 def _pages_img_opts(s, d, last):
     o = ["dpi", "pages", "zip"]
     if d in F.LOSSY_IMAGE:
@@ -103,7 +116,11 @@ def _audio_opts(s, d, last):
         o += ["a_channels", "a_rate"]
     if s != "wav" or d != "wav":
         o += ["start", "end"]
-    return o + ["normalize", "fade", "trim_silence", "speed"]
+    o += ["normalize", "fade", "trim_silence", {"id": "speed", "section": "Son"}, "denoise", "bass", "gain", "karaoke",
+          "reverse"]
+    if d in TAG_FORMATS:
+        o += ["tag_title", "tag_artist", "tag_album", "tag_year"]
+    return o + ["strip_meta"]
 
 
 def _ebook_pdf_opts(s, d, last):
@@ -143,8 +160,10 @@ V, A, I, AN = F.VIDEO_IN, F.AUDIO_IN, F.IMAGE_IN, F.ANIM_IN
 edge("video_to_video", V, F.VIDEO_OUT, "media:video_to_video", 1, ("ffmpeg",), terminal=True,
      opts=lambda s, d, last: ["v_quality", "v_res", "start", "end", "mute"]
      + (["target_mb"] if d in ("mp4", "mkv", "mov", "m4v", "webm", "avi", "wmv", "flv", "ts") else [])
-     + ["crop", "rotate", "speed", "stabilize", "normalize"]
-     + (["auto_subs", "subs_style", "whisper_model", "whisper_lang"] if d in ("mp4", "mkv", "mov", "m4v", "webm") else []))
+     + ["crop", "rotate", "speed", "stabilize", "fps_out", "v_play", "normalize", "denoise"]
+     + (["auto_subs", "subs_style", {"id": "whisper_model", "section": "Sous-titres"},
+         {"id": "whisper_lang", "section": "Sous-titres"}] if d in ("mp4", "mkv", "mov", "m4v", "webm") else [])
+     + WM + ["strip_meta"])
 edge("video_to_anim", V, F.ANIM_OUT, "media:video_to_anim", 1, ("ffmpeg",), terminal=True,
      opts=["fps", "anim_width", "start", "end"])
 edge("to_audio", V | A, F.AUDIO_OUT, "media:to_audio", 1, ("ffmpeg",), terminal=True, opts=_audio_opts)
@@ -159,7 +178,7 @@ edge("image_to_video", I, F.VIDEO_OUT, "media:image_to_video", 1,
 edge("pdf_to_video", ["pdf"], ["mp4"], "media:pdf_to_video", 1.5, ("ffmpeg",), terminal=True, opts=["slide_dur", "pages"])
 
 # ---------------------------------------------------------------- images (Pillow, resvg, vtracer)
-edge("image_to_image", I, F.RASTER_OUT, "images:convert_image", 1, _img_req, opts=_img_save_opts)
+edge("image_to_image", I, F.RASTER_OUT, "images:convert_image", 1, _img_req, opts=_img_edit_opts)
 # Une capture (image d'une vidéo, spectrogramme) ne mène qu'à une image, un SVG ou un PDF d'une page.
 edge("frame_to_image", ["frame"], F.RASTER_OUT, "images:convert_image", 1, terminal=True, opts=_img_save_opts)
 edge("frame_to_svg", ["frame"], ["svg"], "images:vectorize", 1.5, ("vtracer",), terminal=True, opts=["svg_preset"])
@@ -241,10 +260,52 @@ edge("web_capture", F.WEB_IN, ["pdf", "png", "jpg", "html"], "web:capture", 1, (
      opts=lambda s, d, last: ["page_size"] if d == "pdf" else (["web_width"] if d in ("png", "jpg") else []))
 edge("pdf_compress", ["pdf"], ["pdf_small"], "pdfdoc:compress", 1, terminal=True, opts=["pdf_quality"])
 
+# ---------------------------------------------------------------- outils PDF, image, vidéo, audio
+PDF = ["pdf"]
+edge("pdf_split", PDF, ["pdf_split"], "pdftools:split", 1, terminal=True, first_only=True,
+     opts=["split_mode", "split_ranges"])
+edge("pdf_pages", PDF, ["pdf_pages"], "pdftools:pages", 1, terminal=True, first_only=True,
+     opts=["pages_mode", {"id": "pages", "placeholder": "ex. 1-3, 7, 10-"}])
+edge("pdf_rotate", PDF, ["pdf_rotate"], "pdftools:rotate", 1, terminal=True, first_only=True,
+     opts=["pdf_angle", {"id": "pages", "placeholder": "toutes"}])
+edge("pdf_protect", PDF, ["pdf_protect"], "pdftools:protect", 1, terminal=True, first_only=True,
+     opts=["password", "pdf_restrict"])
+edge("pdf_unlock", PDF, ["pdf_unlock"], "pdftools:unlock", 1, terminal=True, first_only=True,
+     opts=[{"id": "password", "placeholder": "celui du PDF"}])
+edge("pdf_watermark", PDF, ["pdf_watermark"], "pdftools:watermark", 1, terminal=True, first_only=True, opts=WM_MAIN)
+edge("pdf_number", PDF, ["pdf_number"], "pdftools:number", 1, terminal=True, first_only=True,
+     opts=["num_fmt", "num_pos", "num_start"])
+edge("pdf_ocr", PDF, ["pdf_ocr"], "pdftools:ocr", 2, ("ocr",), terminal=True, first_only=True, opts=["ocr_lang"])
+edge("pdf_images", PDF, ["pdf_images"], "pdftools:images", 1, terminal=True, first_only=True)
+edge("pdf_clean", PDF, ["pdf_clean"], "pdftools:clean", 1, terminal=True, first_only=True)
+edge("img_nobg", I, ["img_nobg"], "imagetools:remove_background", 2, lambda s, d: _img_req(s, "png"), terminal=True,
+     first_only=True, opts=["nobg_model", "nobg_crop", "nobg_bg"])
+edge("qr_read", I, ["qr_read"], "imagetools:read_codes", 1, lambda s, d: _img_req(s, "png"), terminal=True,
+     first_only=True)
+edge("favicon", I, ["favicon"], "imagetools:favicon_kit", 1, lambda s, d: _img_req(s, "png"), terminal=True,
+     first_only=True)
+edge("contact_sheet", V, ["contact_sheet"], "mediatools:contact_sheet", 1, ("ffmpeg",), terminal=True,
+     first_only=True, opts=["sheet_grid"])
+edge("video_frames", V, ["video_frames"], "mediatools:video_frames", 1, ("ffmpeg",), terminal=True,
+     first_only=True, opts=["frames_rate", "start", "end"])
+edge("media_split", V | A, ["media_split"], "mediatools:media_split", 1, ("ffmpeg",), terminal=True,
+     first_only=True, opts=["split_len"])
+# Outils valables pour n'importe quel fichier (« * »), appliqués au fichier d'origine.
+edge("hash", ["*"], ["hash"], "filetools:hash_file", 0.5, terminal=True, first_only=True)
+edge("info", ["*"], ["info"], "filetools:info_file", 0.5, terminal=True, first_only=True)
+edge("protect", ["*"], ["protect"], "filetools:protect", 1, ("sevenzip",), terminal=True, first_only=True,
+     opts=["password", {"id": "zip_fmt", "default": "7z"}])
+edge("split_vol", ["*"], ["split_vol"], "filetools:split_volumes", 1, ("sevenzip",), terminal=True, first_only=True,
+     opts=["vol_size"])
+
 # ---------------------------------------------------------------- recherche de chemins
 EDGE_BY_NAME = {e.name: e for e in EDGES}
 _INDEX: dict[str, list[Edge]] = defaultdict(list)
+_ANY: list[Edge] = []
 for _e in EDGES:
+    if "*" in _e.srcs:
+        _ANY.append(_e)
+        continue
     for _s in _e.srcs:
         _INDEX[_s].append(_e)
 
@@ -268,7 +329,7 @@ def _dijkstra(src, dst, tools, banned, all_tools, max_len=5):
             if EDGE_BY_NAME[path[-1][0]].terminal or len(path) >= max_len:
                 continue
         seen = {src, *(p[2] for p in path)}
-        for e in _INDEX.get(fmt, ()):
+        for e in (_INDEX.get(fmt, []) + _ANY if not path else _INDEX.get(fmt, ())):
             if e.first_only and path:
                 continue
             for d in e.dsts:
@@ -285,7 +346,9 @@ def _dijkstra(src, dst, tools, banned, all_tools, max_len=5):
 
 
 # Étapes qui changent la nature du contenu : un chemin de secours doit garder exactement les mêmes.
-SEMANTIC = {"font_preview", "web_capture", "archive_convert", "pdf_compress", "transcribe", "tts", "ocr", "spectrogram", "video_frame", "audio_to_video", "image_to_video",
+SEMANTIC = {"font_preview", "web_capture", "archive_convert", "pdf_compress", "pdf_split", "pdf_pages", "pdf_rotate",
+            "pdf_protect", "pdf_unlock", "pdf_watermark", "pdf_number", "pdf_ocr", "pdf_images", "pdf_clean", "img_nobg",
+            "qr_read", "favicon", "contact_sheet", "video_frames", "media_split", "hash", "info", "protect", "split_vol", "transcribe", "tts", "ocr", "spectrogram", "video_frame", "audio_to_video", "image_to_video",
             "pdf_to_video", "frame_to_image", "frame_to_svg", "frame_to_pdf", "image_to_docx", "image_to_pptx",
             "anim_to_image", "pdf_to_images", "cbz_to_images", "pdf_to_cbz", "pdf_to_pptx", "pdf_to_tables",
             "vectorize", "image_to_pdf"}
@@ -340,7 +403,7 @@ def targets_for(fmt: str, ext: str, family: str, tools: dict) -> list[dict]:
     out = []
     for t in F.OFFERS.get(family, []):
         label, _, out_ext = F.OUT[t]
-        if out_ext == ext and family not in F.SAME_FORMAT_OK and t != "pdf_small":
+        if out_ext == ext and family not in F.SAME_FORMAT_OK and t not in F.SPECIAL:
             continue
         if t == "pdf" and family == "pdf" and ext == "pdf":
             continue
@@ -389,6 +452,7 @@ def default_target(family: str, ext: str, targets: list[dict]) -> str | None:
         "archive": "folder",
         "data": "csv" if ext in ("json", "jsonl", "ndjson") else ("xlsx" if ext in ("sqlite", "sqlite3", "db") else "json"),
         "web": "pdf",
+        "file": "info",
     }.get(family)
     ok = [t["id"] for t in targets if t["ok"]]
     if pref in ok:

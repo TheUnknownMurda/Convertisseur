@@ -15,3 +15,6 @@ python-pptx>=1.0
 faster-whisper>=1.1
 yt-dlp[default]>=2025.11
 pysubs2>=1.7
+segno>=1.6
+python-barcode>=0.15
+zxing-cpp>=2.2

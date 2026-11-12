@@ -3,7 +3,7 @@
 Petite application personnelle qui convertit **localement** (sans Internet, sans envoi de fichiers) :
 vidéo, audio, images, GIF, PDF, documents, tableurs, présentations, ebooks, sous-titres, polices,
 archives, données (JSON, YAML, XML, TOML, SQLite) et pages web.
-Chaque fichier peut être converti vers **tous les formats atteignables** (jusqu'à 55 par fichier) :
+Chaque fichier peut être converti vers **tous les formats atteignables** (jusqu'à 65 par fichier) :
 quand il n'existe pas de conversion directe, l'application enchaîne automatiquement plusieurs étapes
 (par exemple DOCX → PDF → JPG, ou EPUB → HTML → TXT → MP3 en lecture vocale).
 
@@ -27,24 +27,42 @@ Le bouton « Mettre à jour » des Réglages actualise yt-dlp quand un site chan
 son artiste, son année et sa pochette.
 À réserver aux contenus dont vous avez les droits (vos vidéos, licences libres…).
 
-## Outils
+## Boîte à outils
 
-- **Compresser pour Discord** (10 Mo par défaut ; 8, 25, 50… au choix), et pour toute vidéo une **taille maximale** : encodage en deux
-  passes, la résolution baisse au besoin pour garder une image nette.
-- **Images** avec un poids maximal en Ko, **PDF compressé** (écran, liseuse ou impression).
-- **Sous-titres** : conversion SRT, VTT, ASS, SSA, SBV, TTML, LRC, SUB, SAMI ; **sous-titres automatiques**
-  (Whisper) incrustés dans l'image ou ajoutés comme piste ; l'outil « Ajouter des sous-titres » assemble une vidéo et un
-  fichier de sous-titres.
-- **Retouches vidéo et audio** (dans les options) : recadrage (carré, 9:16, 16:9… ou bandes noires retirées),
-  rotation, vitesse, stabilisation, volume normalisé, fondus, silences retirés. Les vidéos HDR sont converties
-  en SDR avec des couleurs correctes.
-- **Fusionner** plusieurs vidéos ou audios bout à bout ; **compresser** des fichiers en ZIP ou 7Z ;
-  **extraire** une archive (ZIP, RAR, 7Z, TAR, ISO…).
-- **Page web** : collez un lien et choisissez PDF, capture PNG/JPG, HTML, Markdown, DOCX…
-- **Polices** TTF, OTF, WOFF, WOFF2 entre elles, et aperçu PNG/PDF.
-- **Favoris** : le bouton « Enregistrer ces réglages en favori » (dans les options d'un fichier) ajoute le format
-  et les réglages choisis dans la barre latérale.
-- **Historique** (icône d'horloge en haut) : les dernières conversions, avec ouverture du fichier ou du dossier.
+Plus de 70 outils, rangés par thème dans la barre latérale (Ctrl+K pour en chercher un). Les outils qui demandent un
+réglage (mot de passe, pages, texte du filigrane…) ouvrent directement leurs réglages.
+
+**Outils PDF** : fusionner, diviser (une page par fichier, par groupes ou par plages), extraire ou supprimer des
+pages (dans l'ordre voulu), pivoter, protéger par mot de passe (AES-256, restrictions possibles), retirer un mot de
+passe connu, filigrane, numéros de page, **PDF cherchable** (OCR de Windows, texte invisible placé sur chaque mot),
+extraction des images, nettoyage des métadonnées, compression.
+
+**Outils image** : **suppression de l'arrière-plan** par IA (modèle téléchargé une fois, fonctionne hors ligne),
+redimensionner (50 %, 1920 px, agrandissement ×2 ou ×4), recadrer (1:1, 4:5, 16:9, 9:16…), pivoter ou retourner,
+noir et blanc, sépia, netteté, flou, négatif, filigrane (coin, diagonale, répété), retrait des données EXIF et GPS,
+collage en grille, lecture de **QR codes et codes-barres** (QR, EAN, UPC, Code 128, Data Matrix, PDF417…), kit
+d'icônes pour site web (favicon), compression.
+
+**Outils vidéo** : compression pour Discord, couper, **format vertical sur fond flou** (Reels, TikTok, Shorts),
+recadrer, pivoter, vitesse, lecture à l'envers ou en boomerang, stabilisation, filigrane, ajout d'un logo,
+remplacement ou mélange de la bande-son, retrait du son, sous-titres automatiques ou ajoutés, planche d'aperçu
+horodatée, extraction d'images (ZIP), découpage en segments sans réencodage, fusion.
+
+**Outils audio** : couper, normaliser, augmenter le volume, réduire le bruit, renforcer les basses, vitesse,
+retirer la voix (karaoké), lecture à l'envers, **modifier les tags** (titre, artiste, album, année), ajouter une
+pochette, découper en morceaux, sonnerie iPhone.
+
+**Outils fichiers** (tous les fichiers, même inconnus) : rapport d'informations détaillé (codecs, EXIF et GPS,
+pages, auteur, contenu d'archive), empreintes SHA-256, SHA-1, SHA-512 et MD5 (une ou un lot), archive 7Z ou ZIP
+protégée par mot de passe, découpage d'un gros fichier en volumes, nettoyage des métadonnées, renommage en lot,
+compression ZIP, extraction d'archives.
+
+**Créer** : QR code (lien, texte, Wi-Fi, contact, e-mail, SMS, téléphone ; PNG, SVG ou PDF, couleurs au choix),
+code-barres (EAN-13, UPC-A, Code 128, Code 39, ISBN…), lecture à voix haute d'un texte tapé ou collé (MP3),
+**enregistrement de l'écran** (avec le micro si souhaité) et **enregistrement du micro**.
+
+**Partout** : collez une capture d'écran avec Ctrl+V pour la convertir, la compresser ou y lire du texte ; chaque
+conversion garde ses retouches (filigrane, recadrage, tags…) dans des sections de réglages repliables.
 
 ## Installation
 
@@ -88,6 +106,17 @@ Le bouton **Assembler…** en bas regroupe les fusions : images en **PDF**, **GI
 vidéos ou audios bout à bout, sous-titres, archive ZIP (dans l'ordre de la liste ; glissez les lignes pour réordonner).
 Chaque fichier affiche son trajet de conversion : format d'origine, étapes intermédiaires éventuelles, format choisi.
 
+## Langue et thème
+
+L'interface existe en **français** et en **anglais** : par défaut, elle suit la langue de Windows. Le bouton **EN / FR**
+en bas de la barre latérale change de langue tout de suite ; le choix se retrouve aussi dans les Réglages
+(« Automatique », « Français », « English »). Les messages, les rapports et les noms des fichiers produits suivent la
+langue choisie (« photo (protected).pdf » en anglais).
+
+Le **thème clair ou sombre** suit Windows par défaut ; le bouton soleil / lune à côté des Réglages bascule de l'un à
+l'autre, et les Réglages permettent de revenir au mode « Automatique ». L'installateur demande aussi sa langue au
+démarrage et la donne à l'application lors d'une première installation.
+
 ## Moteurs utilisés
 
 | Moteur | Rôle |
@@ -114,7 +143,8 @@ avec la raison.
 - `convertisseur/engines/` : convertisseurs directs (médias, images, PDF, texte, bureautique, voix, OCR,
   sous-titres, polices, archives, données, pages web).
 - `convertisseur/worker.py` : chaque conversion tourne dans un processus séparé (annulable).
-- `web/` : interface.
+- `convertisseur/i18n.py` : traduction anglaise des libellés, messages et noms de fichiers (le français sert de référence).
+- `web/` : interface (`web/i18n.js` : traduction anglaise de l'interface).
 - `installer/` : installateur Windows (Inno Setup) et script d'installation des prérequis (`setup.ps1`).
 - `requirements-lock.txt` : versions exactes testées, utilisées par l'installateur.
 - `config.json` : réglages et favoris ; `historique.json` : historique ; `convertisseur.log` : journal.

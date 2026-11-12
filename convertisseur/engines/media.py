@@ -8,6 +8,7 @@ import threading
 from collections import deque
 from pathlib import Path
 
+from ..i18n import tr
 from ..tools import gpu_args
 from ..util import NO_WINDOW, FinalError, UserError, fmt_time, parse_time
 
@@ -295,14 +296,28 @@ def layout_fix(info) -> list[str]:
     return [f"channelmap=channel_layout={lay}"] if info.get("layout_unknown") and lay else []
 
 
-def audio_filters(o, duration=None) -> list[str]:
+def audio_filters(o, duration=None, channels=None) -> list[str]:
     af = []
     speed = float(o.get("speed") or 1)
     if o.get("trim_silence"):
         cut = "silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.25"
         af += [cut, "areverse", cut, "areverse"]
+    if o.get("reverse"):
+        af.append("areverse")
     if speed != 1:
         af += _atempo(speed)
+    if o.get("karaoke") and channels != 1:            # voix au centre : soustraction gauche/droite
+        af += ["aformat=channel_layouts=stereo", "pan=stereo|c0=c0-c1|c1=c1-c0"]
+    if o.get("denoise"):
+        af.append("afftdn=nf=-25")
+    bass = int(o.get("bass") or 0)
+    if bass:
+        af.append(f"bass=g={bass}:f=110:w=0.6")
+    gain = float(o.get("gain") or 0)
+    if gain:
+        af.append(f"volume={gain}dB")
+    if bass or gain > 0:
+        af.append("alimiter=limit=0.97:level=false")
     if o.get("normalize"):
         af.append("loudnorm=I=-16:TP=-1.5:LRA=11")
     fade = float(o.get("fade") or 0)
@@ -362,12 +377,15 @@ def _two_pass_bitrate(info, dur, target_mb, audio_kbps):
 
 
 def video_to_video(ctx, src, sfmt, dst, t, subs_file=None, subs_mode=None):
+    from .mediatools import blur_fill, drawtext, play_effect
     o = ctx.opts
     info = probe_media(ctx.tools, src)
     _readable(info)
     if not info["has_video"]:
         raise FinalError("Aucune piste vidéo dans ce fichier.")
     head, tail, dur = _trim(o, info)
+    if (o.get("v_play") or "normal") != "normal":
+        return play_effect(ctx, src, dst, t, info, head, tail, dur)
     quality = o.get("v_quality") or "orig"
     q = "high" if quality == "orig" else quality
     mute = bool(o.get("mute"))
@@ -386,6 +404,9 @@ def video_to_video(ctx, src, sfmt, dst, t, subs_file=None, subs_mode=None):
         vf.append(crop)
     if ROTATE.get(o.get("rotate") or ""):
         vf.append(ROTATE[o["rotate"]])
+    blur = blur_fill(info, o.get("crop"), o.get("rotate"))
+    if blur:
+        vf.append(blur)
     if o.get("stabilize"):
         ctx.progress(None, "Analyse des tremblements…")
         run_ffmpeg(ctx, [*head, "-i", src, *tail, "-vf", "vidstabdetect=shakiness=6:accuracy=15:result=mouvements.trf",
@@ -407,11 +428,16 @@ def video_to_video(ctx, src, sfmt, dst, t, subs_file=None, subs_mode=None):
         vf.append(TONEMAP)
     if scale:
         vf.append(scale)
+    if (o.get("fps_out") or "orig") != "orig":
+        vf.append(f"fps={o['fps_out']}")
     if burn:
         size = SUB_SIZE.get(o.get("subs_style") or "medium", 18)
         vf.append(f"subtitles=sous_incrustes.srt:force_style='FontName=Arial,FontSize={size},Outline=2,"
                   f"Shadow=0,BorderStyle=1,MarginV=24'")
-    af = [] if mute else audio_filters(o, dur)
+    wm = drawtext(ctx, o)
+    if wm:
+        vf.append(wm)
+    af = [] if mute else audio_filters(o, dur, info.get("channels"))
 
     vrule, arule = COPY_RULES.get(t, (set(), set()))
     plain = quality == "orig" and not vf and not target_mb
@@ -428,7 +454,7 @@ def video_to_video(ctx, src, sfmt, dst, t, subs_file=None, subs_mode=None):
                   "-metadata:s:s:0", "language=fre"]
         else:
             a += ["-sn"]
-        return a + ["-dn", "-map_metadata", "0", *CONTAINER.get(t, [])]
+        return a + ["-dn", "-map_metadata", "-1" if o.get("strip_meta") else "0", *CONTAINER.get(t, [])]
 
     def inputs():
         a = [*head, "-i", src]
@@ -510,7 +536,7 @@ def add_subtitles(ctx, items, out_dir: Path) -> list[Path]:
     mode = ctx.opts.get("subs_burn") or "burn"
     ext = "mkv" if (mode == "soft" and Path(video[2]).suffix.lower() == ".mkv") else "mp4"
     ctx.stem = Path(video[2]).stem
-    dst = ctx.stage_dir() / f"{ctx.stem} (sous-titres).{ext}"
+    dst = ctx.stage_dir() / f"{ctx.stem} {tr('(sous-titres)')}.{ext}"
     return video_to_video(ctx, Path(video[0]), video[1], dst, ext, subs_file=srt, subs_mode=mode)
 
 
@@ -525,7 +551,7 @@ def concat(ctx, items, out_dir: Path) -> list[Path]:
     if fmt == "auto":
         fmt = "mp4" if has_video else "mp3"
     video_out = fmt in ("mp4", "mkv")
-    dst = ctx.stage_dir() / f"{ctx.stem} (fusion).{fmt}"
+    dst = ctx.stage_dir() / f"{ctx.stem} {tr('(fusion)')}.{fmt}"
     ref = next((i for i in infos if i["has_video"]), None)
     W, H = ((ref["width"] or 1280) // 2 * 2, (ref["height"] or 720) // 2 * 2) if ref else (1280, 720)
     args, graph, n = [], [], 0
@@ -718,8 +744,9 @@ def to_audio(ctx, src, sfmt, dst, t):
     rate = o.get("a_rate", "auto")
     if t == "mp2" and rate not in ("48000", "44100", "32000"):
         rate = "44100"          # MP2 : fréquences basses incompatibles avec les débits usuels
-    cover_ok = info["attached_pic"] and t in ("mp3", "flac", "m4a", "alac", "m4b")
-    af = audio_filters(o, dur)
+    strip = bool(o.get("strip_meta"))
+    cover_ok = info["attached_pic"] and t in ("mp3", "flac", "m4a", "alac", "m4b") and not strip
+    af = audio_filters(o, dur, info.get("channels"))
     if af and dur:
         dur = dur / float(o.get("speed") or 1)
 
@@ -730,6 +757,8 @@ def to_audio(ctx, src, sfmt, dst, t):
         else:
             a += ["-vn"]
         a += ["-sn", "-dn", *codec]
+        if strip:
+            a += ["-map_metadata", "-1", "-map_chapters", "-1"]
         chain = ([] if "copy" in codec else layout_fix(info)) + af
         if chain:
             a += ["-af", ",".join(chain)]

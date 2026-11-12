@@ -3,7 +3,9 @@
 
   const TOKEN = document.querySelector('meta[name="token"]').content;
   const $ = (s, r = document) => r.querySelector(s);
-  const NF1 = new Intl.NumberFormat("fr-CA", { maximumFractionDigits: 1 });
+  const { t: tr, tn: trn, locale: LOCALE } = window.I18N;
+  const NF1 = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 1 });
+  let reloading = false;                       // rechargement voulu (changement de langue) : pas d'avertissement
 
   // ------------------------------------------------------------ icônes
   const ICONS = {
@@ -48,6 +50,21 @@
     menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
     tools: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L4 16.8V20h3.2l5.3-5.3a4 4 0 0 0 5.2-5.4l-2.5 2.5-2.5-.5-.5-2.5z"/>',
+    lock: '<rect x="5" y="11" width="14" height="10" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+    unlock: '<rect x="5" y="11" width="14" height="10" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 7.6-1.7"/>',
+    stamp: '<path d="M9 13V9.5A3 3 0 1 1 15 9.5V13"/><path d="M5 13h14v4H5z"/><path d="M5 20h14"/>',
+    grid: '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
+    qr: '<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="M14 14h2v2h-2zM18 14h2M14 18v2M17 17h3v3h-3z"/>',
+    barcode: '<path d="M4 5v14M7 5v14M10 5v14M13 5v14M15 5v14M18 5v14M20 5v14" stroke-width="1.4"/>',
+    scissors: '<circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M8.2 7.5 20 18M8.2 16.5 20 6"/>',
+    record: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4" fill="currentColor"/>',
+    mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/>',
+    hash: '<path d="M9 4 7 20M17 4l-2 16M4.5 9h16M3.5 15h16"/>',
+    edit: '<path d="M4 20h4l10.5-10.5a2.8 2.8 0 0 0-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>',
+    eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
+    copy: '<rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"/>',
+    moon: '<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/>',
   };
   const svg = (name, cls = "ic") =>
     `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ICONS.unknown}</svg>`;
@@ -90,7 +107,7 @@
     const res = await fetch(path, init);
     let data = null;
     try { data = await res.json(); } catch { /* vide */ }
-    if (!res.ok) throw new Error((data && data.error) || `Erreur ${res.status}`);
+    if (!res.ok) throw new Error((data && data.error) || tr("Erreur {status}", { status: res.status }));
     return data;
   }
 
@@ -101,12 +118,14 @@
   };
   let keySeq = 0;
   const rows = new Map();
-  const KIND_ICON = { video: "video", audio: "audio", image: "image", anim: "anim", pdf: "pdf", doc: "doc", sheet: "sheet", slides: "slides", ebook: "ebook", subs: "subs", font: "font", archive: "archive", data: "data", web: "web" };
+  const KIND_ICON = { file: "unknown", video: "video", audio: "audio", image: "image", anim: "anim", pdf: "pdf", doc: "doc", sheet: "sheet", slides: "slides", ebook: "ebook", subs: "subs", font: "font", archive: "archive", data: "data", web: "web" };
   const kc = (family) => `var(--k-${family || "unknown"})`;
 
   // ------------------------------------------------------------ identité visuelle
-  const BASE_FAMILY = { "Vidéo": "video", "Animation": "anim", "Audio": "audio", "Image": "image", "Document": "doc", "Tableur": "sheet", "Présentation": "slides", "Sous-titres": "subs", "Police": "font", "Archive": "archive", "Données": "data", "Ebook": "ebook" };
-  const GROUP_COLOR = { "Favoris": "tools", "Vidéo & audio": "video", "En ligne": "link", "Outils": "tools", "Image": "image", "PDF & documents": "pdf", "Autres formats": "data", "GIF": "anim" };
+  const BASE_FAMILY = { "Outils PDF": "pdf", "Outils image": "image", "Outils vidéo": "video", "Outils audio": "audio", "Outils fichier": "archive", "Vidéo": "video", "Animation": "anim", "Audio": "audio", "Image": "image", "Document": "doc", "Tableur": "sheet", "Présentation": "slides", "Sous-titres": "subs", "Police": "font", "Archive": "archive", "Données": "data", "Ebook": "ebook" };
+  const GROUP_COLOR = { "Favoris": "tools", "Vidéo & audio": "video", "En ligne": "link", "Outils": "tools", "Outils PDF": "pdf", "Outils image": "image", "Outils vidéo": "video", "Outils audio": "audio", "Outils fichiers": "archive", "Créer": "tools", "Image": "image", "PDF & documents": "pdf", "Autres formats": "data", "GIF": "anim" };
+  const FAMILY_ICONS = new Set(["video", "audio", "image", "anim", "pdf", "doc", "sheet", "slides", "ebook", "subs", "font", "archive", "data", "web", "link"]);
+  const dotFamily = (p) => (FAMILY_ICONS.has(p.icon) ? p.icon : GROUP_COLOR[p.gkey || p.group] || "tools");
   const POPULAR = {
     video: ["mp4", "mp3", "gif", "webm", "mov", "wav", "txt"], audio: ["mp3", "wav", "flac", "m4a", "ogg", "txt"],
     image: ["jpg", "png", "webp", "pdf", "ico", "svg"], anim: ["mp4", "gif", "webm", "apng", "png"],
@@ -115,19 +134,26 @@
     subs: ["srt", "vtt", "ass", "txt"], font: ["woff2", "ttf", "otf", "png"], archive: ["folder", "zip", "7z"],
     data: ["csv", "xlsx", "json", "yaml"], web: ["pdf", "png", "md", "docx"],
   };
-  const POPULAR_PRESETS = ["yt-mp3", "sp-mp3", "heic-jpg", "pdf-word", "video-mp3", "discord", "video-gif", "pdf-small"];
+  const POPULAR_PRESETS = ["yt-mp3", "sp-mp3", "img-nobg", "pdf-merge", "heic-jpg", "pdf-word", "vid-vertical", "make-qr"];
   const PREFERRED_IN = ["mp4", "mov", "mkv", "avi", "webm", "mp3", "wav", "flac", "m4a", "jpg", "png", "heic", "webp", "svg", "pdf", "docx", "doc", "odt",
     "xlsx", "csv", "pptx", "epub", "mobi", "gif", "srt", "vtt", "ass", "ttf", "otf", "woff2", "zip", "rar", "7z", "json", "xml", "sqlite"];
   const SPECTRUM = ["#ff6b8b", "#ffa94d", "#ffd43b", "#5fe0b0", "#4dabf7", "#9775fa"];
   const norm = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
+  const TOOL_OUT = { pdf_split: ["PAGES", "pdf"], pdf_pages: ["PDF", "pdf"], pdf_rotate: ["PDF", "pdf"], pdf_protect: ["PDF", "pdf"],
+    pdf_unlock: ["PDF", "pdf"], pdf_watermark: ["PDF", "pdf"], pdf_number: ["PDF", "pdf"], pdf_ocr: ["PDF", "pdf"],
+    pdf_images: ["IMAGES", "image"], pdf_clean: ["PDF", "pdf"], img_nobg: ["PNG", "image"], qr_read: ["TEXTE", "doc"],
+    favicon: ["ICÔNES", "image"], contact_sheet: ["JPG", "image"], video_frames: ["ZIP", "archive"],
+    media_split: ["MORCEAUX", "video"], hash: ["SHA-256", "archive"], info: ["RAPPORT", "doc"], protect: ["7Z", "archive"],
+    split_vol: ["VOLUMES", "archive"] };
   function fmtFamily(id) {
+    if (TOOL_OUT[id]) return TOOL_OUT[id][1];
     if (id === "pdf" || id === "pdf_small") return "pdf";
     if (id === "folder") return "archive";
     if (id === "webp_anim" || id === "apng" || id === "gif") return "anim";
     return S.extFamily[id] || "unknown";
   }
-  const fmtName = (id) => ({ pdf_small: "PDF", folder: "DOSSIER", webp_anim: "WEBP", tgz: "TAR.GZ" }[id] || String(id).toUpperCase());
+  const fmtName = (id) => tr(TOOL_OUT[id] ? TOOL_OUT[id][0] : { pdf_small: "PDF", folder: "DOSSIER", webp_anim: "WEBP", tgz: "TAR.GZ" }[id] || String(id).toUpperCase());
   function targetFamily(t) {
     if (!t) return null;
     if (t.id === "pdf" || t.id === "pdf_small") return "pdf";
@@ -151,18 +177,18 @@
       return { ins: [["MOV", "video"], ["HEIC", "image"], ["DOCX", "doc"], ["WAV", "audio"]], outs: [["MP4", "video"], ["JPG", "image"], ["PDF", "pdf"], ["MP3", "audio"]] };
     }
     let ins;
-    if (p.link) ins = [[(p.web ? "Page web" : p.site || "Lien").toUpperCase(), p.web ? "web" : "link"]];
+    if (p.link) ins = [[(p.web ? tr("Page web") : p.site || tr("Lien")).toUpperCase(), p.web ? "web" : "link"]];
     else if (p.accept && p.accept.length) {
       const pick = PREFERRED_IN.filter((e) => p.accept.includes(e)).slice(0, 3);
       ins = (pick.length ? pick : p.accept.slice(0, 3)).map((e) => [fmtName(e), fmtFamily(e)]);
-    } else ins = [["FICHIERS", "unknown"]];
+    } else ins = [[tr("FICHIERS"), "unknown"]];
     let t = p.target;
     if (t && typeof t === "object") t = t["*"] || Object.values(t)[0];
     let outs;
     if (p.combine && S.combine[p.combine]) {
       const ext = S.combine[p.combine].ext || t || "zip";
       outs = [[fmtName(ext), fmtFamily(ext)]];
-    } else if (t === "=") outs = [["MÊME FORMAT", ins[0][1]]];
+    } else if (t === "=") outs = [[tr("MÊME FORMAT"), ins[0][1]]];
     else if (t) outs = [[fmtName(t), fmtFamily(t)]];
     else if (p.link) outs = [["MP4", "video"], ["MP3", "audio"], ["GIF", "anim"]];
     else outs = (POPULAR[p.icon] || ["pdf"]).slice(0, 3).map((x) => [fmtName(x), fmtFamily(x)]);
@@ -190,16 +216,16 @@
     });
     const halo = `<defs><filter id="${id}-blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="20"/></filter></defs>` +
       `<ellipse class="art-halo" cx="${cx}" cy="${cy}" rx="${gw * 0.62}" ry="${gh * 0.62}" fill="url(#${id}-g)" filter="url(#${id}-blur)"/>`;
-    return `<svg class="hero-art" viewBox="0 0 ${W} ${H}" role="img" aria-label="Un fichier entre, il ressort converti">${lines}${halo}${glyph(id, gx0, cy - gh / 2, gw, gh)}${chips}</svg>`;
+    return `<svg class="hero-art" viewBox="0 0 ${W} ${H}" role="img" aria-label="${tr("Un fichier entre, il ressort converti")}">${lines}${halo}${glyph(id, gx0, cy - gh / 2, gw, gh)}${chips}</svg>`;
   }
 
   // ------------------------------------------------------------ formats
   function fmtSize(n) {
     if (n == null) return "";
-    if (n < 1024) return `${n} o`;
-    if (n < 1048576) return `${NF1.format(n / 1024)} Ko`;
-    if (n < 1073741824) return `${NF1.format(n / 1048576)} Mo`;
-    return `${NF1.format(n / 1073741824)} Go`;
+    if (n < 1024) return `${n} ${tr("o")}`;
+    if (n < 1048576) return `${NF1.format(n / 1024)} ${tr("Ko")}`;
+    if (n < 1073741824) return `${NF1.format(n / 1048576)} ${tr("Mo")}`;
+    return `${NF1.format(n / 1073741824)} ${tr("Go")}`;
   }
   function fmtDur(s) {
     s = Math.round(s);
@@ -213,10 +239,10 @@
     if (m.duration) parts.push(fmtDur(m.duration));
     if (m.uploader) parts.push(m.uploader);
     if (m.width && m.height) parts.push(`${m.width}×${m.height}`);
-    if (m.frames) parts.push(`${m.frames} images`);
-    if (m.pages) parts.push(`${m.pages} page${m.pages > 1 ? "s" : ""}`);
-    if (m.encrypted) parts.push("protégé");
-    if (m.unreadable) parts.push("illisible ?");
+    if (m.frames) parts.push(trn(m.frames, "{n} image", "{n} images"));
+    if (m.pages) parts.push(trn(m.pages, "{n} page", "{n} pages"));
+    if (m.encrypted) parts.push(tr("protégé"));
+    if (m.unreadable) parts.push(tr("illisible ?"));
     return parts;
   }
   const targetOf = (f, id = f.target) => (f.targets || []).find((t) => t.id === id);
@@ -245,10 +271,14 @@
     if (!f.target || !targetOf(f)) {
       const pt = presetTarget(f);
       f.target = pt || rec.default || null;
-      const p = currentPreset();
-      if (pt && p && p.options) Object.assign(f.options, p.options);
+      if (pt) applyPresetExtras(f, currentPreset());
     }
     return f;
+  }
+  function applyPresetExtras(f, p) {
+    if (!p) return;
+    if (p.options) Object.assign(f.options, p.options);
+    if (p.open) { f.open = true; f.openSection = typeof p.open === "string" ? p.open : null; }
   }
   function newItem(extra) {
     return Object.assign({ key: `f${++keySeq}`, options: {}, open: false, jobId: null, upload: null, error: null, targets: [], meta: {} }, extra);
@@ -320,18 +350,18 @@
         let data = null;
         try { data = JSON.parse(xhr.responseText); } catch { /* */ }
         if (xhr.status === 200 && data) resolve(data);
-        else reject(new Error((data && data.error) || "Échec de l'import"));
+        else reject(new Error((data && data.error) || tr("Échec de l'import")));
       };
-      xhr.onerror = () => reject(new Error("Échec de l'import"));
-      xhr.onabort = () => reject(new Error("Import annulé"));
+      xhr.onerror = () => reject(new Error(tr("Échec de l'import")));
+      xhr.onabort = () => reject(new Error(tr("Import annulé")));
       xhr.send(item.file);
     });
   }
 
   async function addLink(raw) {
     const url = (raw || "").trim();
-    if (!/^https?:\/\/\S+$/i.test(url)) { toast("Collez une adresse complète, qui commence par https://", "error"); return; }
-    const ph = newItem({ name: url, ext: "", family: null, size: null, upload: { p: null, label: "Analyse du lien…" } });
+    if (!/^https?:\/\/\S+$/i.test(url)) { toast(tr("Collez une adresse complète, qui commence par https://"), "error"); return; }
+    const ph = newItem({ name: url, ext: "", family: null, size: null, upload: { p: null, label: tr("Analyse du lien…") } });
     S.files.push(ph);
     render();
     try {
@@ -346,8 +376,8 @@
         S.files.splice(at + n, 0, applyRecord(newItem(), rec));
         n++;
       }
-      if (n > 1) toast(`${n} éléments ajoutés depuis la liste de lecture.`, "ok");
-      if (!n) toast("Ce lien est déjà dans la liste.", "info");
+      if (n > 1) toast(tr("{n} éléments ajoutés depuis la liste de lecture.", { n }), "ok");
+      if (!n) toast(tr("Ce lien est déjà dans la liste."), "info");
     } catch (e) {
       ph.upload = null;
       ph.error = e.message;
@@ -359,8 +389,8 @@
     const p = currentPreset();
     $("#linkbar").hidden = !(p && (p.link || p.id === "all"));
     $("#link-input").placeholder = p && p.site
-      ? `Collez un lien ${p.site}… (${p.site === "Spotify" ? "titre, album ou playlist" : "vidéo, Reel ou playlist"})`
-      : "Collez un lien YouTube, Spotify, SoundCloud, Instagram, Facebook, TikTok, X, Vimeo…";
+      ? tr("Collez un lien {site}… ({kind})", { site: p.site, kind: tr(p.site === "Spotify" ? "titre, album ou playlist" : "vidéo, Reel ou playlist") })
+      : tr("Collez un lien YouTube, Spotify, SoundCloud, Instagram, Facebook, TikTok, X, Vimeo…");
     const art = $("#link-art");
     if (p && p.link) { const { ins, outs } = heroFlow(p); art.innerHTML = heroArt(ins, outs, "link"); } else art.innerHTML = "";
   }
@@ -422,7 +452,7 @@
     if (!f.id || !f.target) return;
     askNotify();
     const t = targetOf(f);
-    if (!t || !t.ok) { toast(t ? t.reason : "Choisissez un format de sortie.", "error"); return; }
+    if (!t || !t.ok) { toast(t ? t.reason : tr("Choisissez un format de sortie."), "error"); return; }
     try {
       f.error = null;
       const job = await api("/api/convert", { mode: "single", file_ids: [f.id], target: f.target, options: optionValues(f, t.options || []) });
@@ -445,7 +475,7 @@
       const st = stateOf(f);
       if ((st === "idle" || st === "error" || st === "canceled") && targetOf(f)?.ok) { convert(f); n++; }
     }
-    if (!n) toast("Rien à convertir : tout est déjà fait ou en cours.", "info");
+    if (!n) toast(tr("Rien à convertir : tout est déjà fait ou en cours."), "info");
   }
 
   let pollTimer = null;
@@ -467,7 +497,7 @@
 
   function notify(job) {
     try {
-      if (Notification.permission === "granted") new Notification("Conversion terminée", { body: job.outputs.map((o) => o.name).join(", "), icon: "/web/icon.png" });
+      if (Notification.permission === "granted") new Notification(tr("Conversion terminée"), { body: job.outputs.map((o) => o.name).join(", "), icon: "/web/icon.png" });
     } catch { /* */ }
   }
 
@@ -480,20 +510,24 @@
   function renderChrome() {
     const p = currentPreset();
     const has = S.files.length > 0 || S.combos.length > 0;
+    const panel = !!(p && p.panel);
     $("#list-wrap").hidden = !has;
     $("#actionbar").hidden = !has;
     $("#content").classList.toggle("link-first", !!(p && p.link));
     $("#link-art").hidden = has || !(p && p.link);
-    renderDrop(has || !!(p && p.link));
+    $("#panel").hidden = !panel;
+    $("#drop").hidden = panel;
+    if (panel) renderPanel(p); else { panelKey = null; clearInterval(recTimer); recTimer = null; }
+    if (!panel) renderDrop(has || !!(p && p.link));
     renderPopular(!has && (!p || p.id === "all"));
     const ready = S.files.filter((f) => ["idle", "error", "canceled"].includes(stateOf(f)) && targetOf(f)?.ok).length;
     const running = S.files.filter((f) => busy(stateOf(f)));
     const done = S.files.filter((f) => stateOf(f) === "done").length;
     const count = $("#count");
     count.textContent = "";
-    count.append(h("span", {}, `${S.files.length} fichier${S.files.length > 1 ? "s" : ""}`));
-    if (running.length) count.append(h("i", { class: "sep" }), h("span", {}, `${running.length} en cours`));
-    if (done) count.append(h("i", { class: "sep" }), h("span", { class: "done" }, `${done} terminé${done > 1 ? "s" : ""}`));
+    count.append(h("span", {}, trn(S.files.length, "{n} fichier", "{n} fichiers")));
+    if (running.length) count.append(h("i", { class: "sep" }), h("span", {}, tr("{n} en cours", { n: running.length })));
+    if (done) count.append(h("i", { class: "sep" }), h("span", { class: "done" }, trn(done, "{n} terminé", "{n} terminés")));
     // progression d'ensemble
     const tracked = S.files.filter((f) => f.jobId || busy(stateOf(f)));
     const overall = $("#overall");
@@ -502,11 +536,11 @@
       let sum = done;
       for (const f of running) { const j = f.jobId && S.jobs[f.jobId]; sum += j && j.progress ? j.progress : 0; }
       const n = tracked.length;
-      $("#overall-text").textContent = `${done} sur ${n} terminé${done > 1 ? "s" : ""}`;
+      $("#overall-text").textContent = trn(done, "{done} sur {n} terminé", "{done} sur {n} terminés", { done, n });
       $("#overall-bar").style.width = `${Math.min(100, (sum / n) * 100)}%`;
     }
     const all = $("#btn-all");
-    all.innerHTML = `${svg("play")}<span>${ready ? `Tout convertir (${ready})` : done && !running.length ? "Tout est converti" : "Tout convertir"}</span>`;
+    all.innerHTML = `${svg("play")}<span>${ready ? tr("Tout convertir ({n})", { n: ready }) : tr(done && !running.length ? "Tout est converti" : "Tout convertir")}</span>`;
     all.disabled = !ready;
     renderCombine();
   }
@@ -524,8 +558,8 @@
       drop.append(
         h("div", { class: "big", html: svg("plus") }),
         h("div", { class: "grow" },
-          h("h2", {}, S.files.length ? "Ajouter d'autres fichiers" : "Ou convertir des fichiers de cet ordinateur"),
-          h("p", {}, "Cliquez pour parcourir, ou glissez-les n'importe où dans la fenêtre.")),
+          h("h2", {}, tr(S.files.length ? "Ajouter d'autres fichiers" : "Ou convertir des fichiers de cet ordinateur")),
+          h("p", {}, tr("Cliquez pour parcourir, ou glissez-les n'importe où dans la fenêtre."))),
         h("kbd", {}, "Ctrl O"),
       );
       return;
@@ -541,18 +575,18 @@
     }
     drop.append(...[
       art.content.firstChild,
-      h("h2", {}, "Déposez vos fichiers ici"),
-      h("p", { class: "lead" }, !p || p.id === "all"
+      h("h2", {}, tr("Déposez vos fichiers ici")),
+      h("p", { class: "lead" }, tr(!p || p.id === "all"
         ? "Le format est reconnu tout seul et toutes les conversions possibles vous sont proposées. Les dossiers sont acceptés."
-        : "Ou cliquez pour les choisir. Les dossiers sont acceptés."),
+        : "Ou cliquez pour les choisir. Les dossiers sont acceptés.")),
       chips ? h("div", { class: "formats" }, chips) : null,
       h("div", { class: "hero-actions" },
-        h("button", { class: "btn primary", type: "button", onclick: (e) => { e.stopPropagation(); browse(); } }, icon("upload"), "Parcourir les fichiers"),
-        !p || p.id === "all" ? h("button", { class: "btn", type: "button", onclick: (e) => { e.stopPropagation(); const i = $("#link-input"); i.focus(); i.scrollIntoView({ block: "center", behavior: "smooth" }); } }, icon("link"), "Coller un lien") : null,
+        h("button", { class: "btn primary", type: "button", onclick: (e) => { e.stopPropagation(); browse(); } }, icon("upload"), tr("Parcourir les fichiers")),
+        !p || p.id === "all" ? h("button", { class: "btn", type: "button", onclick: (e) => { e.stopPropagation(); const i = $("#link-input"); i.focus(); i.scrollIntoView({ block: "center", behavior: "smooth" }); } }, icon("link"), tr("Coller un lien")) : null,
         h("span", { class: "hint-key" }, h("kbd", {}, "Ctrl O"))),
       h("ol", { class: "steps" },
-        ["Déposez vos fichiers", "Choisissez le format", "Convertissez"].map((s, i) => h("li", { style: { "--sc": SPECTRUM[i * 2] } }, h("b", {}, String(i + 1)), s))),
-      h("div", { class: "privacy", html: `${svg("shield")}<span>Aucun envoi sur Internet : tout est converti sur cet ordinateur.</span>` }),
+        ["Déposez vos fichiers", "Choisissez le format", "Convertissez"].map((s, i) => h("li", { style: { "--sc": SPECTRUM[i * 2] } }, h("b", {}, String(i + 1)), tr(s)))),
+      h("div", { class: "privacy", html: `${svg("shield")}<span>${tr("Aucun envoi sur Internet : tout est converti sur cet ordinateur.")}</span>` }),
     ].filter(Boolean));
   }
 
@@ -563,7 +597,7 @@
     box.dataset.ready = "1";
     const items = POPULAR_PRESETS.map((id) => S.presetMap[id]).filter(Boolean);
     box.append(
-      h("div", { class: "section-title" }, "Raccourcis populaires"),
+      h("div", { class: "section-title" }, tr("Raccourcis populaires")),
       h("div", { class: "pop-grid" }, items.map((p) => {
         const { ins, outs } = heroFlow(p);
         const [a, b] = [ins[0], outs[0]];
@@ -591,25 +625,25 @@
     if (!avail.length) return;
     const featured = avail.find((a) => p && p.combine === a.mode);
     const btn = (a, primary) => h("button", {
-      class: `btn ${primary ? "primary" : ""} sm`, type: "button", title: `${a.spec.label} avec ${a.n} fichiers, dans l'ordre de la liste`,
+      class: `btn ${primary ? "primary" : ""} sm`, type: "button", title: tr("{label} avec {n} fichiers, dans l'ordre de la liste", { label: a.spec.label, n: a.n }),
       onclick: () => openCombine(a.mode),
     }, icon("combo"), `${a.spec.button} (${a.n})`);
     if (featured) box.append(btn(featured, true));
     const rest = avail.filter((a) => a !== featured);
     if (rest.length === 1 && !featured) box.append(btn(rest[0], false));
     else if (rest.length) {
-      box.append(h("button", { class: "btn sm", type: "button", title: "Assembler plusieurs fichiers de la liste en un seul", onclick: (e) => openCombineMenu(e.currentTarget, rest) },
-        icon("combo"), featured ? "Autres assemblages" : `Assembler… (${rest.length})`, icon("chev")));
+      box.append(h("button", { class: "btn sm", type: "button", title: tr("Assembler plusieurs fichiers de la liste en un seul"), onclick: (e) => openCombineMenu(e.currentTarget, rest) },
+        icon("combo"), featured ? tr("Autres assemblages") : tr("Assembler… ({n})", { n: rest.length }), icon("chev")));
     }
   }
 
   function openCombineMenu(anchor, list) {
     closePicker();
     const pop = h("div", { class: "picker menu", role: "menu" },
-      h("div", { class: "menu-title" }, "Assembler les fichiers de la liste"),
+      h("div", { class: "menu-title" }, tr("Assembler les fichiers de la liste")),
       list.map((a) => h("button", { class: "menu-item", type: "button", role: "menuitem", onclick: () => { closePicker(); openCombine(a.mode); } },
         h("span", { class: "dot", style: { "--kc": "var(--k-combo)" }, html: svg("combo") }),
-        h("span", { class: "grow" }, h("b", {}, a.spec.button), h("small", {}, `${a.n} fichiers, dans l'ordre de la liste`)))));
+        h("span", { class: "grow" }, h("b", {}, a.spec.button), h("small", {}, tr("{n} fichiers, dans l'ordre de la liste", { n: a.n }))))));
     pop.addEventListener("keydown", (e) => { if (e.key === "Escape") { closePicker(); anchor.focus(); } });
     document.body.append(pop);
     const rect = anchor.getBoundingClientRect();
@@ -643,16 +677,16 @@
   function buildRow(f) {
     const el = h("article", { class: "row fresh", onanimationend: (e) => { if (e.target === el) el.classList.remove("fresh"); } });
     const r = {};
-    r.grip = h("span", { class: "grip", title: "Glisser pour réordonner", html: svg("grip") });
+    r.grip = h("span", { class: "grip", title: tr("Glisser pour réordonner"), html: svg("grip") });
     r.thumb = h("div", { class: "thumb" });
     r.name = h("div", { class: "name" });
     r.meta = h("div", { class: "meta" });
     r.src = h("span", { class: "fmt" });
     r.wire = h("span", { class: "wire" }, h("span", { class: "spark" }));
-    r.target = h("button", { class: "target-btn", type: "button", title: "Choisir le format de sortie", onclick: (e) => openPicker(e.currentTarget, f.targets, f.target, (id) => setTarget(f, id), null, f.family) });
-    r.opt = h("button", { class: "opt-btn", type: "button", title: "Réglages de cette conversion", onclick: () => { f.open = !f.open; updateRow(f); } }, icon("sliders"), h("span", { class: "lbl" }, "Réglages"));
+    r.target = h("button", { class: "target-btn", type: "button", title: tr("Choisir le format de sortie"), onclick: (e) => openPicker(e.currentTarget, f.targets, f.target, (id) => setTarget(f, id), null, f.family) });
+    r.opt = h("button", { class: "opt-btn", type: "button", title: tr("Réglages de cette conversion"), onclick: () => { f.open = !f.open; updateRow(f); } }, icon("sliders"), h("span", { class: "lbl" }, tr("Réglages")));
     r.go = h("button", { class: "btn primary go", type: "button" });
-    r.remove = h("button", { class: "icon-btn", type: "button", title: "Retirer de la liste", onclick: () => removeItem(f) }, icon("x"));
+    r.remove = h("button", { class: "icon-btn", type: "button", title: tr("Retirer de la liste"), onclick: () => removeItem(f) }, icon("x"));
     r.opts = h("div", { class: "opts", hidden: true });
     r.status = h("div", { class: "status-line" });
     r.bar = h("div", { class: "bar" }, h("i"));
@@ -692,7 +726,7 @@
 
     r.name.textContent = f.url ? f.name.replace(/\.(mp4|m4a)$/i, "") : f.name;
     r.name.title = f.source || f.name;
-    const kind = f.url ? (f.meta && f.meta.site ? f.meta.site : "Lien") : (f.familyLabel || S.families[f.family] || "");
+    const kind = f.url ? (f.meta && f.meta.site ? f.meta.site : tr("Lien")) : (f.familyLabel || S.families[f.family] || "");
     r.meta.textContent = "";
     [kind, ...metaParts(f)].filter(Boolean).forEach((part, i) => {
       if (i) r.meta.append(h("i", { class: "sep" }));
@@ -701,20 +735,20 @@
 
     const t = targetOf(f);
     el.style.setProperty("--tc", t ? kc(targetFamily(t)) : "var(--line-2)");
-    r.src.textContent = f.url ? (f.meta && f.meta.site ? f.meta.site : "Lien") : (f.ext || "?").toUpperCase();
-    r.src.title = f.url ? "Contenu en ligne" : (f.familyLabel || "");
+    r.src.textContent = f.url ? (f.meta && f.meta.site ? f.meta.site : tr("Lien")) : (f.ext || "?").toUpperCase();
+    r.src.title = f.url ? tr("Contenu en ligne") : (f.familyLabel || "");
     const via = t && t.via ? t.via : [];
     const viaKey = via.join(">");
     if (r.wire.dataset.via !== viaKey) {
       r.wire.dataset.via = viaKey;
       r.wire.querySelectorAll(".node").forEach((n) => n.remove());
-      via.forEach((step, i) => r.wire.append(h("span", { class: "node", title: `Étape intermédiaire : ${fmtName(step)}`, style: { left: `${((i + 1) / (via.length + 1)) * 100}%` } })));
+      via.forEach((step, i) => r.wire.append(h("span", { class: "node", title: tr("Étape intermédiaire : {fmt}", { fmt: fmtName(step) }), style: { left: `${((i + 1) / (via.length + 1)) * 100}%` } })));
     }
-    r.wire.title = via.length ? `Passe par ${via.map(fmtName).join(" → ")}` : "Conversion directe";
+    r.wire.title = via.length ? tr("Passe par {route}", { route: via.map(fmtName).join(" → ") }) : tr("Conversion directe");
     r.target.disabled = !f.targets.length || busy(st);
     r.target.innerHTML = f.targets.length
-      ? `<span><span class="tg">en</span><span class="tl">${escapeHtml(t ? t.label : "Choisir…")}</span></span>${svg("chev")}`
-      : `<small>${st === "uploading" ? "Import…" : "Aucune sortie"}</small>`;
+      ? `<span><span class="tg">${tr("en")}</span><span class="tl">${escapeHtml(t ? t.label : tr("Choisir…"))}</span></span>${svg("chev")}`
+      : `<small>${tr(st === "uploading" ? "Import…" : "Aucune sortie")}</small>`;
     const specs = optionSpecs(f);
     r.opt.hidden = !t;                       // même sans réglage : le panneau permet d'enregistrer un favori
     r.opt.classList.toggle("on", !!(f.open && t));
@@ -723,9 +757,9 @@
     if (changed) r.opt.append(h("span", { class: "badge" }, changed));
 
     // options
-    const optKey = `${f.target}|${specs.map((s) => s.id).join(",")}`;
+    const optKey = `${f.target}|${f.openSection || ""}|${specs.map((s) => s.id).join(",")}`;
     if (f.open && t) {
-      if (r.opts.dataset.key !== optKey) { r.opts.dataset.key = optKey; r.opts.textContent = ""; r.opts.append(...specs.map((s) => field(f, s))); if (!specs.length) r.opts.append(h("div", { class: "hint" }, "Aucun réglage pour cette sortie.")); appendHint(r.opts, t); r.opts.append(h("div", { class: "hint" }, h("button", { class: "btn sm ghost", type: "button", onclick: () => saveFavorite(f) }, icon("star"), "Enregistrer ces réglages en favori"))); }
+      if (r.opts.dataset.key !== optKey) { r.opts.dataset.key = optKey; r.opts.textContent = ""; renderOptions(r.opts, f, specs, t); }
       r.opts.hidden = false;
     } else r.opts.hidden = true;
 
@@ -733,12 +767,12 @@
     r.go.onclick = null;
     if (st === "queued" || st === "running") {
       r.go.className = "btn go";
-      r.go.innerHTML = `${svg("stop")}<span>Annuler</span>`;
+      r.go.innerHTML = `${svg("stop")}<span>${tr("Annuler")}</span>`;
       r.go.disabled = false;
       r.go.onclick = () => cancel(f.jobId);
     } else {
       r.go.className = "btn primary go";
-      r.go.innerHTML = `${svg(st === "error" ? "retry" : "play")}<span>${st === "error" ? "Réessayer" : "Convertir"}</span>`;
+      r.go.innerHTML = `${svg(st === "error" ? "retry" : "play")}<span>${tr(st === "error" ? "Réessayer" : "Convertir")}</span>`;
       r.go.disabled = st === "uploading" || st === "unsupported" || !t || !t.ok;
       r.go.title = t && !t.ok ? t.reason : "";
       r.go.onclick = () => convert(f);
@@ -755,31 +789,33 @@
     let progress = null;
     if (st === "uploading") {
       progress = f.upload.p;
-      line.append(h("span", { class: "spin" }), h("span", {}, f.upload.label || `Import… ${Math.round((f.upload.p || 0) * 100)} %`));
+      line.append(h("span", { class: "spin" }), h("span", {}, f.upload.label || tr("Import… {p} %", { p: Math.round((f.upload.p || 0) * 100) })));
     } else if (st === "localerror") {
       line.append(h("span", { class: "err", html: `${svg("alert")}<span>${escapeHtml(f.error)}</span>` }));
     } else if (st === "unsupported") {
-      line.append(h("span", { class: "muted" }, "Format non reconnu : aucune conversion disponible pour ce type de fichier."));
+      line.append(h("span", { class: "muted" }, tr("Format non reconnu : aucune conversion disponible pour ce type de fichier.")));
     } else if (st === "queued") {
       progress = 0;
-      line.append(h("span", { class: "spin" }), h("span", { class: "muted" }, "En attente d'un emplacement libre…"));
+      line.append(h("span", { class: "spin" }), h("span", { class: "muted" }, tr("En attente d'un emplacement libre…")));
     } else if (st === "running") {
       progress = job.progress;
-      line.append(h("span", { class: "spin" }), job.progress != null ? h("span", { class: "pct" }, `${Math.round(job.progress * 100)} %`) : null,
-        h("span", {}, job.message || "Conversion…"));
+      line.append(h("span", { class: "spin" }), job.progress != null ? h("span", { class: "pct" }, tr("{p} %", { p: Math.round(job.progress * 100) })) : null,
+        h("span", {}, job.message || tr("Conversion…")));
     } else if (st === "done" && job) {
       line.append(h("div", { class: "result" }, resultParts(job, f)));
     } else if (st === "error" && job) {
-      line.append(h("span", { class: "err", html: `${svg("alert")}<span>${escapeHtml(job.error || "Échec de la conversion.")}</span>` }));
+      line.append(h("span", { class: "err", html: `${svg("alert")}<span>${escapeHtml(job.error || tr("Échec de la conversion."))}</span>` }));
     } else if (st === "canceled") {
-      line.append(h("span", { class: "muted" }, "Conversion annulée."));
+      line.append(h("span", { class: "muted" }, tr("Conversion annulée.")));
     } else {
       const t = targetOf(f);
       if (f.url) {
-        line.append(h("span", { class: "muted" }, `Sera téléchargé depuis ${(f.meta && f.meta.site) || "le site"} puis converti${t ? ` en ${t.label}` : ""}.`));
+        const site = (f.meta && f.meta.site) || tr("le site");
+        line.append(h("span", { class: "muted" }, t ? tr("Sera téléchargé depuis {site} puis converti en {target}.", { site, target: t.label })
+          : tr("Sera téléchargé depuis {site} puis converti.", { site })));
       } else if (t && t.via && t.via.length) {
         const steps = [f.ext, ...t.via].map(fmtName);
-        const route = h("span", { class: "route" }, `En ${t.via.length + 1} étapes :`);
+        const route = h("span", { class: "route" }, tr("En {n} étapes :", { n: t.via.length + 1 }));
         steps.forEach((s) => route.append(h("span", {}, s), icon("arrow")));
         route.append(h("span", {}, t.label));
         line.append(route);
@@ -799,27 +835,27 @@
     const comparable = t && SAME_KIND[f.family] && SAME_KIND[f.family] === t.base;
     const parts = [];
     const outs = job.outputs || [];
-    if (!outs.length) return [h("span", { class: "ok", html: `${svg("check")}<span>Terminé</span>` })];
+    if (!outs.length) return [h("span", { class: "ok", html: `${svg("check")}<span>${tr("Terminé")}</span>` })];
     const o = outs[0];
     parts.push(h("span", { class: "ok", html: svg("check") }));
     parts.push(h("span", { class: "file", title: o.path }, o.name));
-    if (o.is_dir) parts.push(h("span", { class: "muted" }, `dossier · ${o.count} fichier${o.count > 1 ? "s" : ""} · ${fmtSize(o.size)}`));
+    if (o.is_dir) parts.push(h("span", { class: "muted" }, `${tr("dossier")} · ${trn(o.count, "{n} fichier", "{n} fichiers")} · ${fmtSize(o.size)}`));
     else {
       parts.push(h("span", { class: "muted" }, fmtSize(o.size)));
       if (comparable && srcSize && o.size && job.mode === "single") {
         const pct = Math.round((o.size / srcSize - 1) * 100);
-        if (pct <= -1) parts.push(h("span", { class: "delta down", title: "Gain de taille par rapport à l'original" }, `−${Math.abs(pct)} %`));
+        if (pct <= -1) parts.push(h("span", { class: "delta down", title: tr("Gain de taille par rapport à l'original") }, tr("−{p} %", { p: Math.abs(pct) })));
       }
     }
     parts.push(h("span", { class: "spacer" }));
-    parts.push(h("button", { class: "btn sm", type: "button", onclick: () => api("/api/open", { job_id: job.id, index: 0 }).catch((e) => toast(e.message, "error")) }, icon("open"), "Ouvrir"));
-    parts.push(h("button", { class: "btn sm ghost", type: "button", onclick: () => api("/api/reveal", { job_id: job.id, index: 0 }).catch((e) => toast(e.message, "error")) }, icon("folder"), "Afficher dans le dossier"));
+    parts.push(h("button", { class: "btn sm", type: "button", onclick: () => api("/api/open", { job_id: job.id, index: 0 }).catch((e) => toast(e.message, "error")) }, icon("open"), tr("Ouvrir")));
+    parts.push(h("button", { class: "btn sm ghost", type: "button", onclick: () => api("/api/reveal", { job_id: job.id, index: 0 }).catch((e) => toast(e.message, "error")) }, icon("folder"), tr("Afficher dans le dossier")));
     return parts;
   }
 
   function appendHint(box, t) {
     if (t && t.via && t.via.length) {
-      box.append(h("div", { class: "hint" }, `Passe par : ${t.via.map((x) => x.toUpperCase()).join(" → ")}`));
+      box.append(h("div", { class: "hint" }, tr("Passe par : {route}", { route: t.via.map((x) => x.toUpperCase()).join(" → ") })));
     }
   }
 
@@ -847,10 +883,203 @@
       input = h("input", { type: "number", min: d.min, max: d.max, placeholder: d.placeholder || "", value: val ?? "", onchange: (e) => set(e.target.value === "" ? null : Number(e.target.value)) });
     } else if (d.type === "color") {
       input = h("input", { type: "color", value: val || "#ffffff", onchange: (e) => set(e.target.value) });
+    } else if (d.type === "password") {
+      const pw = h("input", { type: "password", autocomplete: "new-password", placeholder: d.placeholder || "", value: val ?? "",
+        oninput: (e) => { item.options[spec.id] = e.target.value; }, onchange: (e) => set(e.target.value) });
+      input = h("div", { class: "pw" }, pw, h("button", { type: "button", class: "icon-btn", title: tr("Afficher ou masquer"), html: svg("eye"),
+        onclick: () => { pw.type = pw.type === "password" ? "text" : "password"; } }));
     } else {
       input = h("input", { type: "text", placeholder: d.placeholder || "", value: val ?? "", onchange: (e) => set(e.target.value) });
     }
     return h("label", { class: "field" }, h("span", {}, d.label), input);
+  }
+
+  const sectionOf = (spec) => ({ ...S.options[spec.id], ...spec }).section || "";
+  function renderOptions(box, f, specs, t) {
+    const main = specs.filter((s) => !sectionOf(s));
+    const groups = new Map();
+    for (const spec of specs) {
+      const sec = sectionOf(spec);
+      if (sec) { if (!groups.has(sec)) groups.set(sec, []); groups.get(sec).push(spec); }
+    }
+    if (main.length) box.append(h("div", { class: "opt-main" }, main.map((spec) => field(f, spec))));
+    if (!specs.length) box.append(h("div", { class: "hint" }, tr("Aucun réglage pour cette sortie.")));
+    for (const [sec, list] of groups) {
+      const changed = list.filter((spec) => f.options[spec.id] !== undefined && f.options[spec.id] !== specDefault(spec)).length;
+      box.append(h("details", { class: "opt-sec", open: f.openSection === sec || changed > 0 },
+        h("summary", {}, h("span", {}, sec), changed ? h("span", { class: "sec-badge" }, String(changed)) : null),
+        h("div", { class: "opt-main" }, list.map((spec) => field(f, spec)))));
+    }
+    appendHint(box, t);
+    box.append(h("div", { class: "hint" }, h("button", { class: "btn sm ghost", type: "button", onclick: () => saveFavorite(f) }, icon("star"), tr("Enregistrer ces réglages en favori"))));
+  }
+
+  // ------------------------------------------------------------ panneaux « Créer »
+  let panelKey = null;
+  let recTimer = null;
+  function genResult(box, res, kind) {
+    box.textContent = "";
+    box.append(h("div", { class: "gen-result" },
+      res.preview ? h("div", { class: "gen-preview" }, h("img", { src: res.preview, alt: "" })) : h("div", { class: "gen-preview icon", html: svg(kind) }),
+      h("div", { class: "gen-info" }, h("b", {}, res.name), h("small", {}, fmtSize(res.size)),
+        h("div", { class: "gen-actions" },
+          h("button", { class: "btn sm primary", type: "button", onclick: () => api("/api/open-path", { path: res.path }).catch((e) => toast(e.message, "error")) }, icon("open"), tr("Ouvrir")),
+          h("button", { class: "btn sm", type: "button", onclick: () => api("/api/open-path", { path: res.path, reveal: true }).catch((e) => toast(e.message, "error")) }, icon("folder"), tr("Afficher dans le dossier"))))));
+  }
+  const pfield = (label, input, wide) => h("label", { class: `field${wide ? " wide" : ""}` }, h("span", {}, tr(label)), input);
+  const ptext = (ph, value = "") => h("input", { type: "text", placeholder: tr(ph), value });
+  const pselect = (choices, value) => { const el = h("select", {}, choices.map(([v, l]) => h("option", { value: v }, tr(l)))); if (value !== undefined) el.value = value; return el; };
+
+  function panelQr(box) {
+    const kinds = [["text", "Lien ou texte"], ["wifi", "Wi-Fi"], ["contact", "Contact"], ["email", "E-mail"], ["sms", "SMS"], ["phone", "Téléphone"]];
+    let kind = "text";
+    const fields = h("div", { class: "opt-main" });
+    const inputs = {};
+    const drawFields = () => {
+      fields.textContent = "";
+      const add = (key, label, el, wide) => { inputs[key] = el; fields.append(pfield(label, el, wide)); };
+      for (const k of Object.keys(inputs)) delete inputs[k];
+      if (kind === "text") add("text", "Lien ou texte", h("textarea", { rows: 3, placeholder: tr("https://… ou n'importe quel texte") }), true);
+      if (kind === "wifi") { add("ssid", "Nom du réseau", ptext("ex. Maison")); add("password", "Mot de passe", ptext("")); add("security", "Sécurité", pselect([["WPA", "WPA / WPA2 / WPA3"], ["WEP", "WEP"], ["nopass", "Aucune"]])); }
+      if (kind === "contact") { add("first", "Prénom", ptext("")); add("last", "Nom", ptext("")); add("phone", "Téléphone", ptext("+1 514 555 0100")); add("email", "E-mail", ptext("")); add("org", "Entreprise", ptext("")); add("url", "Site web", ptext("https://")); }
+      if (kind === "email") { add("email", "Adresse", ptext("nom@exemple.com")); add("subject", "Objet", ptext("")); add("body", "Message", h("textarea", { rows: 2 }), true); }
+      if (kind === "sms") { add("phone", "Numéro", ptext("+1 514 555 0100")); add("message", "Message", ptext("")); }
+      if (kind === "phone") add("phone", "Numéro", ptext("+1 514 555 0100"));
+    };
+    const seg = h("div", { class: "seg" }, kinds.map(([k, l]) => h("button", { type: "button", class: k === kind ? "on" : "", onclick: (e) => { kind = k; seg.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b === e.currentTarget)); drawFields(); } }, tr(l))));
+    const color = h("input", { type: "color", value: "#15141a" });
+    const bg = h("input", { type: "color", value: "#ffffff" });
+    const transparent = h("input", { type: "checkbox" });
+    const size = pselect([["small", "Petite"], ["medium", "Moyenne"], ["large", "Grande"]], "medium");
+    const format = pselect([["png", "PNG"], ["svg", "SVG (vectoriel)"], ["pdf", "PDF"]], "png");
+    const ecc = pselect([["l", "Faible (plus compact)"], ["m", "Moyenne"], ["q", "Élevée"], ["h", "Maximale (logo par-dessus)"]], "m");
+    const result = h("div", {});
+    const go = h("button", { class: "btn cta", type: "button" }, icon("qr"), tr("Créer le QR code"));
+    go.onclick = async () => {
+      const data = { type: "qr", kind, color: color.value, bg: bg.value, transparent: transparent.checked, size: size.value, format: format.value, ecc: ecc.value };
+      for (const [k, el] of Object.entries(inputs)) data[k] = el.value;
+      go.disabled = true;
+      try { genResult(result, await api("/api/generate", data), "qr"); } catch (e) { toast(e.message, "error"); }
+      go.disabled = false;
+    };
+    drawFields();
+    box.append(seg, fields,
+      h("details", { class: "opt-sec" }, h("summary", {}, h("span", {}, tr("Apparence"))),
+        h("div", { class: "opt-main" }, pfield("Couleur", color), pfield("Fond", bg), h("label", { class: "check" }, transparent, h("span", {}, tr("Fond transparent"))), pfield("Taille", size), pfield("Format", format), pfield("Correction d'erreurs", ecc))),
+      h("div", { class: "panel-go" }, go), result);
+  }
+
+  function panelBarcode(box) {
+    const kind = pselect([["code128", "Code 128 (texte, chiffres)"], ["ean13", "EAN-13 (produits)"], ["ean8", "EAN-8"], ["upca", "UPC-A (Amérique du Nord)"], ["code39", "Code 39"], ["isbn13", "ISBN-13 (livres)"], ["itf", "ITF"], ["codabar", "Codabar"]], "code128");
+    const data = ptext("ex. 590123412345");
+    const format = pselect([["png", "PNG"], ["svg", "SVG (vectoriel)"]], "png");
+    const result = h("div", {});
+    const go = h("button", { class: "btn cta", type: "button" }, icon("barcode"), tr("Créer le code-barres"));
+    go.onclick = async () => {
+      go.disabled = true;
+      try { genResult(result, await api("/api/generate", { type: "barcode", kind: kind.value, data: data.value, format: format.value }), "barcode"); } catch (e) { toast(e.message, "error"); }
+      go.disabled = false;
+    };
+    box.append(h("div", { class: "opt-main" }, pfield("Type", kind), pfield("Contenu", data, true), pfield("Format", format)),
+      h("p", { class: "hint" }, tr("EAN et UPC : la clé de contrôle (dernier chiffre) est calculée si vous ne la donnez pas.")),
+      h("div", { class: "panel-go" }, go), result);
+  }
+
+  function panelTts(box) {
+    const text = h("textarea", { rows: 9, placeholder: tr("Tapez ou collez votre texte ici…") });
+    const count = h("small", { class: "muted" }, trn(0, "{n} caractère", "{n} caractères"));
+    text.addEventListener("input", () => { const n = text.value.length; count.textContent = trn(n, "{n} caractère", "{n} caractères", { n: n.toLocaleString(LOCALE) }); });
+    const voice = pselect((S.options.voice && S.options.voice.choices) || [["auto", "Automatique"]], "auto");
+    const rate = pselect((S.options.tts_rate && S.options.tts_rate.choices) || [["0", "Normale"]], "0");
+    const fmt = pselect([["mp3", "MP3"], ["wav", "WAV"], ["m4a", "M4A"], ["ogg", "OGG"]], "mp3");
+    const go = h("button", { class: "btn cta", type: "button" }, icon("audio"), tr("Créer l'audio"));
+    go.onclick = async () => {
+      go.disabled = true;
+      try {
+        const rec = await api("/api/text-file", { text: text.value });
+        addRecord(rec);
+        const f = S.files.find((x) => x.id === rec.id);
+        if (f) {
+          f.target = targetOf(f, fmt.value) ? fmt.value : f.target;
+          Object.assign(f.options, { voice: voice.value, tts_rate: rate.value });
+          render();
+          convert(f);
+        }
+      } catch (e) { toast(e.message, "error"); }
+      go.disabled = false;
+    };
+    box.append(pfield("Texte", text, true), count,
+      h("div", { class: "opt-main" }, pfield("Voix", voice), pfield("Vitesse", rate), pfield("Format", fmt)),
+      h("div", { class: "panel-go" }, go),
+      h("p", { class: "hint" }, tr("L'audio apparaît dans la liste ci-dessous. Vous pouvez aussi déposer un document (TXT, DOCX, PDF, EPUB…) pour le faire lire.")));
+  }
+
+  function panelRecorder(box, kind) {
+    const mic = pselect([["", kind === "audio" ? "Chargement des micros…" : "Sans micro"]], "");
+    const fps = pselect([["30", "30 images/s"], ["60", "60 images/s (fluide)"], ["15", "15 images/s (léger)"]], "30");
+    const clock = h("div", { class: "rec-clock" }, "00:00");
+    const state = h("div", { class: "rec-state" }, tr("Prêt"));
+    const result = h("div", {});
+    const btn = h("button", { class: "btn cta rec-btn", type: "button" });
+    const draw = (st) => {
+      const on = st && st.running && st.kind === kind;
+      box.classList.toggle("recording", !!on);
+      btn.innerHTML = on ? `${svg("stop")}<span>${tr("Arrêter et enregistrer")}</span>` : `${svg("record")}<span>${tr(kind === "audio" ? "Démarrer l'enregistrement" : "Démarrer l'enregistrement de l'écran")}</span>`;
+      if (on) {
+        const sec = Math.floor(st.elapsed);
+        clock.textContent = `${String(Math.floor(sec / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`;
+        state.textContent = `${tr("Enregistrement en cours…")}${st.size > 0 ? ` ${fmtSize(st.size)}` : ""}`;
+      } else if (st && st.running) {
+        state.textContent = tr("Un autre enregistrement est en cours.");
+      }
+    };
+    const tick = async () => {
+      try { const st = await api("/api/record/status"); draw(st); if (!st.running) { clearInterval(recTimer); recTimer = null; } } catch { /* */ }
+    };
+    btn.onclick = async () => {
+      btn.disabled = true;
+      try {
+        if (box.classList.contains("recording")) {
+          clearInterval(recTimer); recTimer = null;
+          state.textContent = tr("Finalisation du fichier…");
+          const res = await api("/api/record/stop", {});
+          draw(null); clock.textContent = "00:00"; state.textContent = tr("Enregistré.");
+          genResult(result, res, kind === "audio" ? "mic" : "record");
+        } else {
+          result.textContent = "";
+          draw(await api("/api/record/start", { kind, mic: mic.value, fps: fps.value }));
+          clearInterval(recTimer); recTimer = setInterval(tick, 1000);
+        }
+      } catch (e) { toast(e.message, "error"); draw(null); }
+      btn.disabled = false;
+    };
+    api("/api/record/devices").then((d) => {
+      mic.textContent = "";
+      const list = d.microphones || [];
+      if (kind !== "audio") mic.append(h("option", { value: "" }, tr("Sans micro")));
+      list.forEach((m) => mic.append(h("option", { value: m }, m)));
+      if (kind === "audio" && !list.length) mic.append(h("option", { value: "" }, tr("Aucun micro détecté")));
+      draw(d);
+      if (d.running) { clearInterval(recTimer); recTimer = setInterval(tick, 1000); }
+    }).catch(() => {});
+    draw(null);
+    box.append(h("div", { class: "rec-card" }, h("span", { class: "rec-dot" }), clock, state),
+      h("div", { class: "opt-main" }, pfield(kind === "audio" ? "Micro" : "Micro (facultatif)", mic), kind === "audio" ? null : pfield("Fluidité", fps)),
+      h("div", { class: "panel-go" }, btn),
+      h("p", { class: "hint" }, tr(kind === "audio"
+        ? "Le fichier MP3 est enregistré dans votre dossier de sortie."
+        : "Tout l'écran est filmé (tous les moniteurs). Le son de l'ordinateur n'est pas capté : seulement le micro choisi.")),
+      result);
+  }
+
+  function renderPanel(p) {
+    const box = $("#panel");
+    if (panelKey === p.id) return;
+    panelKey = p.id;
+    clearInterval(recTimer); recTimer = null;
+    box.textContent = "";
+    box.className = `panel panel-${p.panel}`;
+    ({ qr: panelQr, barcode: panelBarcode, tts: panelTts, screen: (b) => panelRecorder(b, "screen"), mic: (b) => panelRecorder(b, "audio") }[p.panel] || (() => {}))(box);
   }
 
   function setTarget(f, id) {
@@ -874,7 +1103,7 @@
     S.files = keep;
     S.combos = S.combos.filter((c) => { const j = S.jobs[c.jobId]; return j && (j.status === "queued" || j.status === "running"); });
     render();
-    if (keep.length) toast("Les conversions en cours ont été conservées.", "info");
+    if (keep.length) toast(tr("Les conversions en cours ont été conservées."), "info");
   }
 
   // ------------------------------------------------------------ réordonner
@@ -917,15 +1146,16 @@
   function openCombine(mode) {
     const spec = S.combine[mode];
     const items = combineItems(spec);
-    const holder = { options: {} };
+    const p = currentPreset();
+    const holder = { options: p && p.combine === mode && p.options ? { ...p.options } : {} };
     const fields = spec.options.map((o) => field(holder, o));
     modal(spec.label, [
-      h("p", {}, `${items.length} fichiers seront assemblés dans l'ordre de la liste. Glissez les lignes (poignée à gauche) pour changer l'ordre.`),
+      h("p", {}, items.length > 1 ? tr("{n} fichiers, dans l'ordre de la liste (glissez les lignes par la poignée à gauche pour changer l'ordre).", { n: items.length }) : tr("1 fichier.")),
       h("div", { class: "opts", style: { padding: "0", border: "0", background: "none" } }, fields),
     ], [
-      { label: "Annuler" },
+      { label: tr("Annuler") },
       {
-        label: "Créer", primary: true, run: async () => {
+        label: tr("Créer"), primary: true, run: async () => {
           try {
             const job = await api("/api/convert", { mode, file_ids: items.map((f) => f.id), options: holder.options });
             S.jobs[job.id] = job;
@@ -945,7 +1175,7 @@
     r.name = h("div", { class: "name" });
     r.meta = h("div", { class: "meta" });
     r.go = h("button", { class: "btn go", type: "button" });
-    r.remove = h("button", { class: "icon-btn", type: "button", title: "Retirer", onclick: () => { S.combos = S.combos.filter((x) => x !== c); render(); } }, icon("x"));
+    r.remove = h("button", { class: "icon-btn", type: "button", title: tr("Retirer"), onclick: () => { S.combos = S.combos.filter((x) => x !== c); render(); } }, icon("x"));
     r.status = h("div", { class: "status-line" });
     r.bar = h("div", { class: "bar" }, h("i"));
     el.append(h("div", { class: "row-main" }, h("span"), r.thumb, h("div", { class: "info" }, r.name, r.meta), h("div"), h("div", { class: "actions" }, r.go, r.remove)), r.status, r.bar);
@@ -961,9 +1191,9 @@
     const st = job ? job.status : "queued";
     el.dataset.state = st;
     r.name.textContent = S.combine[c.mode].label;
-    r.meta.textContent = `${c.count} fichiers · ${job && job.names ? job.names.slice(0, 3).join(", ") + (job.names.length > 3 ? "…" : "") : ""}`;
+    r.meta.textContent = `${trn(c.count, "{n} fichier", "{n} fichiers")} · ${job && job.names ? job.names.slice(0, 3).join(", ") + (job.names.length > 3 ? "…" : "") : ""}`;
     r.go.hidden = !(st === "queued" || st === "running");
-    r.go.innerHTML = `${svg("stop")}<span>Annuler</span>`;
+    r.go.innerHTML = `${svg("stop")}<span>${tr("Annuler")}</span>`;
     r.go.onclick = () => cancel(c.jobId);
     renderStatus(r, st, { size: null, targets: [] }, job);
   }
@@ -980,14 +1210,14 @@
 
   function openPicker(anchor, targets, current, onPick, footer, family) {
     closePicker();
-    const search = h("input", { class: "picker-search", type: "search", placeholder: "Rechercher un format… (ex. mp3, pdf, jpg)", "aria-label": "Rechercher un format" });
+    const search = h("input", { class: "picker-search", type: "search", placeholder: tr("Rechercher un format… (ex. mp3, pdf, jpg)"), "aria-label": tr("Rechercher un format") });
     const body = h("div", { class: "picker-body" });
-    const pop = h("div", { class: "picker", role: "dialog", "aria-label": "Format de sortie" }, h("div", { class: "picker-top", html: svg("search") }), body);
+    const pop = h("div", { class: "picker", role: "dialog", "aria-label": tr("Format de sortie") }, h("div", { class: "picker-top", html: svg("search") }), body);
     pop.firstChild.append(search);
-    pop.append(h("div", { class: "picker-foot" }, footer || h("span", {}, h("kbd", {}, "↑↓"), "naviguer ", h("kbd", {}, "Entrée"), "choisir ", h("kbd", {}, "Échap"), "fermer")));
+    pop.append(h("div", { class: "picker-foot" }, footer || h("span", {}, h("kbd", {}, "↑↓"), `${tr("naviguer")} `, h("kbd", {}, tr("Entrée")), `${tr("choisir")} `, h("kbd", {}, tr("Échap")), tr("fermer"))));
     const chip = (t) => h("button", {
       type: "button", class: `chip${t.id === current ? " on" : ""}${t.ok ? "" : " off"}`, disabled: !t.ok, style: { "--tc": kc(targetFamily(t)) },
-      title: t.ok ? (t.via && t.via.length ? `${t.label} — passe par ${t.via.map(fmtName).join(" → ")}` : t.label) : t.reason,
+      title: t.ok ? (t.via && t.via.length ? tr("{label} — passe par {route}", { label: t.label, route: t.via.map(fmtName).join(" → ") }) : t.label) : t.reason,
       onclick: () => { closePicker(); onPick(t.id); },
     }, t.label);
     const draw = () => {
@@ -1000,11 +1230,11 @@
         if (!groups.has(t.group)) groups.set(t.group, []);
         groups.get(t.group).push(t);
       }
-      if (!groups.size) { body.append(h("div", { class: "picker-empty" }, "Aucun format ne correspond.")); return; }
+      if (!groups.size) { body.append(h("div", { class: "picker-empty" }, tr("Aucun format ne correspond."))); return; }
       const popular = !words.length && family && POPULAR[family]
         ? POPULAR[family].map((id) => targets.find((t) => t.id === id && t.ok)).filter(Boolean) : [];
       if (popular.length >= 3) {
-        body.append(h("div", { class: "picker-group pop-head" }, h("i"), "Les plus utilisés"), h("div", { class: "picker-grid" }, popular.map(chip)));
+        body.append(h("div", { class: "picker-group pop-head" }, h("i"), tr("Les plus utilisés")), h("div", { class: "picker-grid" }, popular.map(chip)));
       }
       for (const [g, list] of groups) {
         body.append(h("div", { class: "picker-group", style: { "--gc": kc(targetFamily(list[0])) } }, h("i"), g));
@@ -1057,29 +1287,29 @@
         else if (t.ok) { cur.n++; cur.ok = true; }
       }
     }
-    if (!map.size) { toast("Aucun fichier prêt.", "info"); return; }
+    if (!map.size) { toast(tr("Aucun fichier prêt."), "info"); return; }
     const order = new Map(S.groups.map((g, i) => [g, i]));
-    const targets = [...map.values()].map((t) => ({ ...t, group: t.base || t.group, label: `${t.label}${t.n && t.n < S.files.length ? ` (${t.n})` : ""}` }));
-    targets.sort((a, b) => (order.get(a.group) ?? 99) - (order.get(b.group) ?? 99));
+    const targets = [...map.values()].map((t) => ({ ...t, gkey: t.base || t.group, group: t.base_label || t.base || t.group, label: `${t.label}${t.n && t.n < S.files.length ? ` (${t.n})` : ""}` }));
+    targets.sort((a, b) => (order.get(a.gkey) ?? 99) - (order.get(b.gkey) ?? 99));
     openPicker(anchor, targets, null, (id) => {
       let n = 0;
       for (const f of S.files) if (!busy(stateOf(f)) && targetOf(f, id)?.ok) { f.target = id; n++; }
       render();
-      toast(`${n} fichier${n > 1 ? "s" : ""} réglé${n > 1 ? "s" : ""} sur ${map.get(id).label}.`, "ok");
-    }, "Le nombre entre parenthèses indique combien de fichiers acceptent ce format.");
+      toast(trn(n, "{n} fichier réglé sur {label}.", "{n} fichiers réglés sur {label}.", { label: map.get(id).label }), "ok");
+    }, tr("Le nombre entre parenthèses indique combien de fichiers acceptent ce format."));
   }
 
   // ------------------------------------------------------------ fenêtres, notifications
-  function modal(title, body, actions) {
+  function modal(title, body, actions, onClose) {
     const back = h("div", { class: "modal-back" });
-    const close = () => { back.remove(); document.removeEventListener("keydown", onKey); };
+    const close = () => { back.remove(); document.removeEventListener("keydown", onKey); if (onClose) onClose(); };
     const onKey = (e) => { if (e.key === "Escape") close(); };
     const footer = h("footer", {}, actions.map((a) => h("button", {
       class: `btn ${a.primary ? "primary" : ""}`, type: "button",
       onclick: async () => { if (a.run) { const r = await a.run(); if (r === false) return; } close(); },
     }, a.label)));
     const box = h("div", { class: "modal", role: "dialog", "aria-modal": "true" },
-      h("header", {}, h("h3", {}, title), h("button", { class: "icon-btn", type: "button", title: "Fermer", onclick: close }, icon("x"))),
+      h("header", {}, h("h3", {}, title), h("button", { class: "icon-btn", type: "button", title: tr("Fermer"), onclick: close }, icon("x"))),
       h("div", { class: "body" }, body), footer);
     back.append(box);
     back.addEventListener("mousedown", (e) => { if (e.target === back) close(); });
@@ -1103,103 +1333,147 @@
     const path = h("div", { class: "path", title: s.output_dir }, s.output_dir);
     const T = S.tools;
     const toolRow = (ok, label, note) => h("div", { class: ok ? "" : "off" }, h("i"), h("span", {}, label), note ? h("small", {}, note) : null);
-    modal("Réglages", [
-      h("div", { class: "setting" }, h("span", {}, "Dossier d'enregistrement"),
+    const choice = (label, value, choices, onchange) => {
+      const sel = h("select", { onchange: (e) => onchange(e.target.value) }, choices.map(([v, l]) => h("option", { value: v }, l)));
+      sel.value = String(value);
+      return h("label", { class: "field" }, h("span", {}, label), sel);
+    };
+    const whisperNote = !T.whisper ? tr("transcription de la parole")
+      : `${tr("transcription de la parole ({device})", { device: tr(T.whisper_gpu ? "carte NVIDIA" : "processeur") })} ${
+        T.whisper_models && T.whisper_models.length ? tr("— modèle(s) : {list}", { list: T.whisper_models.join(", ") }) : tr("— modèle téléchargé au 1er usage")}`;
+    modal(tr("Réglages"), [
+      h("div", { class: "setting-pair" },
+        choice(tr("Langue"), s.lang || "auto", [["auto", tr("Automatique (langue de Windows)")], ["fr", "Français"], ["en", "English"]], (v) => { s.lang = v; }),
+        choice(tr("Thème"), s.theme || "system", [["system", tr("Automatique (comme Windows)")], ["light", tr("Clair")], ["dark", tr("Sombre")]],
+          (v) => { s.theme = v; applyTheme(v); })),
+      h("div", { class: "setting" }, h("span", {}, tr("Dossier d'enregistrement")),
         h("div", { class: "path-row" }, path,
           h("button", {
             class: "btn sm", type: "button", onclick: async () => {
               const r = await api("/api/pick-folder", {});
               if (r.path) { s.output_dir = r.path; path.textContent = r.path; path.title = r.path; }
-              else if (r.unavailable) toast("Sélecteur de dossier indisponible.", "error");
+              else if (r.unavailable) toast(tr("Sélecteur de dossier indisponible."), "error");
             },
-          }, "Changer…"))),
+          }, tr("Changer…")))),
       h("label", { class: "check" }, h("input", { type: "checkbox", checked: !!s.next_to_source, onchange: (e) => { s.next_to_source = e.target.checked; } }),
-        h("span", {}, "Enregistrer à côté du fichier d'origine (fichiers choisis avec « Parcourir »)")),
+        h("span", {}, tr("Enregistrer à côté du fichier d'origine (fichiers choisis avec « Parcourir »)"))),
       h("label", { class: "check" }, h("input", { type: "checkbox", checked: !!s.open_folder, onchange: (e) => { s.open_folder = e.target.checked; } }),
-        h("span", {}, "Ouvrir le dossier à la fin de chaque conversion")),
+        h("span", {}, tr("Ouvrir le dossier à la fin de chaque conversion"))),
       h("label", { class: "check" }, h("input", { type: "checkbox", disabled: !T.gpu, checked: !!s.gpu && !!T.gpu, onchange: (e) => { s.gpu = e.target.checked; } }),
-        h("span", {}, T.gpu ? `Accélération matérielle : vidéos (${T.gpu})${T.whisper_gpu ? " et transcription (CUDA)" : ""}` : "Accélération matérielle (aucune carte compatible détectée)")),
-      h("label", { class: "field" }, h("span", {}, "Conversions simultanées"),
-        (() => { const sel = h("select", { onchange: (e) => { s.parallel = Number(e.target.value); } }, [1, 2, 3, 4].map((n) => h("option", { value: n }, String(n)))); sel.value = String(s.parallel); return sel; })()),
-      h("label", { class: "field" }, h("span", {}, "Session du navigateur pour les sites qui exigent une connexion (Instagram, Facebook…)"),
-        (() => {
-          const sel = h("select", { onchange: (e) => { s.cookies = e.target.value; } }, [
-            ["none", "Aucune (contenus publics seulement)"], ["firefox", "Firefox"], ["edge", "Microsoft Edge"],
-            ["chrome", "Google Chrome"], ["brave", "Brave"], ["opera", "Opera"], ["vivaldi", "Vivaldi"],
-          ].map(([v, l]) => h("option", { value: v }, l)));
-          sel.value = s.cookies || "none";
-          return sel;
-        })()),
-      h("div", { class: "setting" }, h("span", {}, "Module de téléchargement"),
+        h("span", {}, T.gpu
+          ? tr(T.whisper_gpu ? "Accélération matérielle : vidéos ({gpu}) et transcription (CUDA)" : "Accélération matérielle : vidéos ({gpu})", { gpu: T.gpu })
+          : tr("Accélération matérielle (aucune carte compatible détectée)"))),
+      choice(tr("Conversions simultanées"), s.parallel, [1, 2, 3, 4].map((n) => [String(n), String(n)]), (v) => { s.parallel = Number(v); }),
+      choice(tr("Session du navigateur pour les sites qui exigent une connexion (Instagram, Facebook…)"), s.cookies || "none", [
+        ["none", tr("Aucune (contenus publics seulement)")], ["firefox", "Firefox"], ["edge", "Microsoft Edge"],
+        ["chrome", "Google Chrome"], ["brave", "Brave"], ["opera", "Opera"], ["vivaldi", "Vivaldi"],
+      ], (v) => { s.cookies = v; }),
+      h("div", { class: "setting" }, h("span", {}, tr("Module de téléchargement")),
         h("div", { class: "path-row" },
-          h("div", { class: "path", style: { direction: "ltr" } }, T.ytdlp ? `yt-dlp ${T.ytdlp}` : "yt-dlp non installé"),
+          h("div", { class: "path", style: { direction: "ltr" } }, T.ytdlp ? `yt-dlp ${T.ytdlp}` : tr("yt-dlp non installé")),
           h("button", {
             class: "btn sm", type: "button", onclick: async (e) => {
               const b = e.currentTarget;
               b.disabled = true;
-              b.textContent = "Mise à jour…";
-              try { const r = await api("/api/update-ytdlp", {}); S.tools.ytdlp = r.version; toast(`yt-dlp est à jour (${r.version}).`, "ok"); }
+              b.textContent = tr("Mise à jour…");
+              try { const r = await api("/api/update-ytdlp", {}); S.tools.ytdlp = r.version; toast(tr("yt-dlp est à jour ({v}).", { v: r.version }), "ok"); }
               catch (err) { toast(err.message, "error"); }
               b.disabled = false;
-              b.textContent = "Mettre à jour";
+              b.textContent = tr("Mettre à jour");
             },
-          }, "Mettre à jour"))),
-      h("div", { class: "setting" }, h("span", {}, "Moteurs installés"),
+          }, tr("Mettre à jour")))),
+      h("div", { class: "setting" }, h("span", {}, tr("Moteurs installés")),
         h("div", { class: "tool-list" },
-          toolRow(!!T.ffmpeg, `FFmpeg ${T.ffmpeg || ""}`, "vidéo, audio, GIF"),
+          toolRow(!!T.ffmpeg, `FFmpeg ${T.ffmpeg || ""}`, tr("vidéo, audio, GIF")),
           toolRow(!!T.libreoffice, "LibreOffice", "DOC, ODT, RTF, XLS, PPT…"),
           toolRow(!!T.calibre, "Calibre", "MOBI, AZW3, FB2, LIT…"),
-          toolRow(!!T.edge, "Microsoft Edge", "mise en page HTML → PDF"),
-          toolRow(!!T.sevenzip, "7-Zip", "archives RAR, 7Z, ISO…"),
-          toolRow(!!T.ytdlp, `yt-dlp ${T.ytdlp || ""}`, T.js_runtime ? "téléchargement YouTube, SoundCloud, Instagram, Facebook…" : "installez Node.js pour YouTube"),
-          toolRow(T.voices && T.voices.length, "Voix Windows", T.voices && T.voices.length ? T.voices.join(", ") : "lecture vocale"),
-          toolRow(!!T.ocr, "OCR Windows", T.ocr ? `reconnaissance de texte (${T.ocr})` : "reconnaissance de texte"),
-          toolRow(!!T.whisper, "Whisper", T.whisper ? `transcription de la parole (${T.whisper_gpu ? "carte NVIDIA" : "processeur"})${T.whisper_models && T.whisper_models.length ? ` — modèle(s) : ${T.whisper_models.join(", ")}` : " — modèle téléchargé au 1er usage"}` : "transcription de la parole"))),
-      h("div", { class: "setting" }, h("span", {}, "Raccourcis"),
+          toolRow(!!T.edge, "Microsoft Edge", tr("mise en page HTML → PDF")),
+          toolRow(!!T.sevenzip, "7-Zip", tr("archives RAR, 7Z, ISO…")),
+          toolRow(!!T.ytdlp, `yt-dlp ${T.ytdlp || ""}`, tr(T.js_runtime ? "téléchargement YouTube, SoundCloud, Instagram, Facebook…" : "installez Node.js pour YouTube")),
+          toolRow(T.voices && T.voices.length, tr("Voix Windows"), T.voices && T.voices.length ? T.voices.join(", ") : tr("lecture vocale")),
+          toolRow(!!T.ocr, tr("OCR Windows"), T.ocr ? tr("reconnaissance de texte ({langs})", { langs: T.ocr }) : tr("reconnaissance de texte")),
+          toolRow(!!T.whisper, "Whisper", whisperNote))),
+      h("div", { class: "setting" }, h("span", {}, tr("Raccourcis")),
         h("div", { class: "path-row" }, h("button", {
           class: "btn sm", type: "button", onclick: async () => {
-            try { await api("/api/shortcut", {}); toast("Raccourci « Convertisseur » créé sur le Bureau (vous pouvez y glisser des fichiers).", "ok"); } catch (e) { toast(e.message, "error"); }
+            try { await api("/api/shortcut", {}); toast(tr("Raccourci « Convertisseur » créé sur le Bureau (vous pouvez y glisser des fichiers)."), "ok"); } catch (e) { toast(e.message, "error"); }
           },
-        }, icon("link"), "Raccourci sur le Bureau"), h("button", {
+        }, icon("link"), tr("Raccourci sur le Bureau")), h("button", {
           class: "btn sm", type: "button", onclick: async () => {
-            try { await api("/api/sendto", {}); toast("Ajouté au menu clic droit → « Envoyer vers » de l'Explorateur.", "ok"); } catch (e) { toast(e.message, "error"); }
+            try { await api("/api/sendto", {}); toast(tr("Ajouté au menu clic droit → « Envoyer vers » de l'Explorateur."), "ok"); } catch (e) { toast(e.message, "error"); }
           },
-        }, icon("link"), "Menu « Envoyer vers »"))),
+        }, icon("link"), tr("Menu « Envoyer vers »")))),
     ], [
-      { label: "Annuler" },
+      { label: tr("Annuler") },
       {
-        label: "Enregistrer", primary: true, run: async () => {
-          try { S.settings = await api("/api/settings", s); toast("Réglages enregistrés.", "ok"); } catch (e) { toast(e.message, "error"); return false; }
+        label: tr("Enregistrer"), primary: true, run: async () => {
+          const langChanged = (s.lang || "auto") !== (S.settings.lang || "auto");
+          try { S.settings = await api("/api/settings", s); } catch (e) { toast(e.message, "error"); return false; }
+          if (langChanged) { reloading = true; location.reload(); return; }
+          toast(tr("Réglages enregistrés."), "ok");
         },
       },
-    ]);
+    ], () => applyTheme(S.settings.theme));                  // aperçu du thème annulé si la fenêtre se ferme sans enregistrer
+  }
+
+  // ------------------------------------------------------------ thème clair ou sombre, langue
+  const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+  function applyTheme(theme) {
+    const forced = theme === "light" || theme === "dark";
+    const root = document.documentElement;
+    root.classList.add("no-anim");
+    if (forced) root.dataset.theme = theme; else delete root.dataset.theme;
+    requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove("no-anim")));
+    const meta = document.querySelector('meta[name="color-scheme"]');
+    if (meta) meta.content = forced ? theme : "light dark";
+    renderThemeButton();
+  }
+  const shownTheme = () => document.documentElement.dataset.theme || (darkQuery.matches ? "dark" : "light");
+  function renderThemeButton() {
+    const b = $("#btn-theme");
+    if (!b) return;
+    const dark = shownTheme() === "dark";
+    b.innerHTML = svg(dark ? "sun" : "moon");
+    b.title = tr(dark ? "Passer au thème clair" : "Passer au thème sombre");
+    b.setAttribute("aria-label", b.title);
+  }
+  async function toggleTheme() {
+    const next = shownTheme() === "dark" ? "light" : "dark";
+    applyTheme(next);
+    try { S.settings = await api("/api/settings", { theme: next }); } catch (e) { toast(e.message, "error"); }
+  }
+  async function switchLang(lang) {
+    try { S.settings = await api("/api/settings", { lang }); } catch (e) { toast(e.message, "error"); return; }
+    reloading = true;
+    location.reload();
   }
 
   // ------------------------------------------------------------ historique
   async function openHistory() {
     let items = [];
     try { items = await api("/api/history"); } catch (e) { toast(e.message, "error"); return; }
-    const fmt = new Intl.DateTimeFormat("fr-CA", { dateStyle: "medium", timeStyle: "short" });
+    const fmt = new Intl.DateTimeFormat(LOCALE, { dateStyle: "medium", timeStyle: "short" });
     const famOfName = (n) => fmtFamily(extOf(n || ""));
     const list = items.length ? items.map((e) => h("div", { class: "hist" },
       h("span", { class: "dot", style: { "--kc": kc(famOfName(e.outputs[0] && e.outputs[0].name)) }, html: svg(KIND_ICON[famOfName(e.outputs[0] && e.outputs[0].name)] || "unknown") }),
       h("div", { class: "hist-main" },
         h("b", {}, e.outputs.map((o) => o.name).join(", ") || "—"),
-        h("small", {}, `${fmt.format(new Date(e.date * 1000))} · ${e.target} · depuis ${e.names.slice(0, 2).join(", ")}${e.names.length > 2 ? "…" : ""}`)),
+        h("small", {}, `${fmt.format(new Date(e.date * 1000))} · ${e.target} · ${tr("depuis {names}", { names: e.names.slice(0, 2).join(", ") + (e.names.length > 2 ? "…" : "") })}`)),
       e.outputs[0] && e.outputs[0].exists ? h("div", { class: "hist-actions" },
-        h("button", { class: "btn sm", type: "button", onclick: () => api("/api/history/open", { path: e.outputs[0].path }).catch((x) => toast(x.message, "error")) }, icon("open"), "Ouvrir"),
-        h("button", { class: "btn sm ghost", type: "button", onclick: () => api("/api/history/open", { path: e.outputs[0].path, reveal: true }).catch((x) => toast(x.message, "error")) }, icon("folder"))) : h("small", { class: "muted" }, "déplacé ou supprimé"))) : [h("p", {}, "Aucune conversion pour l'instant.")];
-    modal("Historique des conversions", [h("div", { class: "hist-list" }, list)], [
-      { label: "Effacer l'historique", run: async () => { await api("/api/history/clear", {}); toast("Historique effacé.", "ok"); } },
-      { label: "Fermer", primary: true },
+        h("button", { class: "btn sm", type: "button", onclick: () => api("/api/history/open", { path: e.outputs[0].path }).catch((x) => toast(x.message, "error")) }, icon("open"), tr("Ouvrir")),
+        h("button", { class: "btn sm ghost", type: "button", onclick: () => api("/api/history/open", { path: e.outputs[0].path, reveal: true }).catch((x) => toast(x.message, "error")) }, icon("folder"))) : h("small", { class: "muted" }, tr("déplacé ou supprimé")))) : [h("p", {}, tr("Aucune conversion pour l'instant."))];
+    modal(tr("Historique des conversions"), [h("div", { class: "hist-list" }, list)], [
+      { label: tr("Effacer l'historique"), run: async () => { await api("/api/history/clear", {}); toast(tr("Historique effacé."), "ok"); } },
+      { label: tr("Fermer"), primary: true },
     ]);
   }
 
   // ------------------------------------------------------------ barre latérale
   function favoritePresets() {
     return (S.settings.favorites || []).map((fav) => ({
-      id: `fav-${fav.id}`, group: "Favoris", label: fav.label, icon: "star", target: fav.target, options: fav.options,
-      accept: null, title: `Favori : ${fav.label}`, desc: `Règle les fichiers compatibles sur ${fav.targetLabel || fav.target.toUpperCase()} avec vos réglages enregistrés.`, fav: fav.id,
+      id: `fav-${fav.id}`, group: tr("Favoris"), gkey: "Favoris", label: fav.label, icon: "star", target: fav.target, options: fav.options,
+      accept: null, title: tr("Favori : {label}", { label: fav.label }),
+      desc: tr("Règle les fichiers compatibles sur {target} avec vos réglages enregistrés.", { target: fav.targetLabel || fav.target.toUpperCase() }), fav: fav.id,
     }));
   }
 
@@ -1207,15 +1481,15 @@
     const t = targetOf(f);
     if (!t) return;
     const input = h("input", { type: "text", value: `${(f.ext || "").toUpperCase()} → ${t.label}`, style: { width: "100%", height: "36px", padding: "0 10px", borderRadius: "9px", border: "1px solid var(--border)", background: "var(--panel-2)" } });
-    modal("Nouveau favori", [h("p", {}, "Nom du favori (il apparaîtra dans la barre latérale) :"), input], [
-      { label: "Annuler" },
+    modal(tr("Nouveau favori"), [h("p", {}, tr("Nom du favori (il apparaîtra dans la barre latérale) :")), input], [
+      { label: tr("Annuler") },
       {
-        label: "Enregistrer", primary: true, run: async () => {
+        label: tr("Enregistrer"), primary: true, run: async () => {
           const fav = { id: Math.random().toString(36).slice(2, 9), label: input.value.trim() || t.label, target: f.target, targetLabel: t.label, options: optionValues(f, t.options || []) };
           try {
             S.settings = await api("/api/settings", { favorites: [...(S.settings.favorites || []), fav] });
             refreshPresets();
-            toast(`Favori « ${fav.label} » ajouté.`, "ok");
+            toast(tr("Favori « {label} » ajouté.", { label: fav.label }), "ok");
           } catch (e) { toast(e.message, "error"); return false; }
         },
       },
@@ -1269,10 +1543,10 @@
       class: `nav-item${home ? " home" : ""}${p.id === S.preset ? " active" : ""}`, type: "button", "data-id": p.id, title: p.desc || p.label,
       onclick: () => { selectPreset(p.id); document.body.classList.remove("nav-open"); },
     },
-      h("span", { class: "dot", style: { "--kc": home || p.icon === "star" ? "var(--k-tools)" : kc(p.icon) }, html: svg(p.icon) }),
-      home ? h("span", { class: "grow" }, h("b", {}, p.label), h("small", {}, "Le format est reconnu tout seul"))
+      h("span", { class: "dot", style: { "--kc": home || p.icon === "star" ? "var(--k-tools)" : kc(dotFamily(p)) }, html: svg(p.icon) }),
+      home ? h("span", { class: "grow" }, h("b", {}, p.label), h("small", {}, tr("Le format est reconnu tout seul")))
         : h("span", { class: "grow", html: highlight(p.label, words) }),
-      p.fav ? h("span", { class: "fav-del", title: "Supprimer ce favori", html: svg("x"), onclick: (e) => { e.stopPropagation(); deleteFavorite(p.fav); } }) : null);
+      p.fav ? h("span", { class: "fav-del", title: tr("Supprimer ce favori"), html: svg("x"), onclick: (e) => { e.stopPropagation(); deleteFavorite(p.fav); } }) : null);
   }
   function renderNav() {
     const nav = $("#nav");
@@ -1285,8 +1559,9 @@
     }
     const groups = [];
     for (const p of S.presets) {
-      let g = groups.find((x) => x.name === (p.group || ""));
-      if (!g) groups.push(g = { name: p.group || "", items: [] });
+      const key = p.gkey || p.group || "";           // nom d'origine : couleur et groupes ouverts, quelle que soit la langue
+      let g = groups.find((x) => x.key === key);
+      if (!g) groups.push(g = { key, name: p.group || "", items: [] });
       g.items.push(p);
     }
     let shown = 0;
@@ -1295,15 +1570,15 @@
       if (!items.length) continue;
       shown += items.length;
       if (!g.name) { items.forEach((p) => nav.append(navItem(p, words))); continue; }
-      const open = words.length > 0 || navOpen.has(g.name);
+      const open = words.length > 0 || navOpen.has(g.key);
       const box = h("div", { class: `nav-group${open ? "" : " closed"}` });
       box.append(
         h("button", {
-          class: "nav-group-head", type: "button", "aria-expanded": String(open), style: { "--gc": kc(GROUP_COLOR[g.name] || "tools") },
+          class: "nav-group-head", type: "button", "aria-expanded": String(open), style: { "--gc": kc(GROUP_COLOR[g.key] || "tools") },
           onclick: () => {
             if (words.length) return;
             const nowOpen = box.classList.toggle("closed") === false;
-            if (nowOpen) navOpen.add(g.name); else navOpen.delete(g.name);
+            if (nowOpen) navOpen.add(g.key); else navOpen.delete(g.key);
             box.firstChild.setAttribute("aria-expanded", String(nowOpen));
             saveNavOpen();
           },
@@ -1312,7 +1587,7 @@
       );
       nav.append(box);
     }
-    if (!shown) nav.append(h("div", { class: "nav-empty" }, "Aucun outil ne correspond.", h("br"), h("small", {}, "« Tous les fichiers » accepte tout.")));
+    if (!shown) nav.append(h("div", { class: "nav-empty" }, tr("Aucun outil ne correspond."), h("br"), h("small", {}, tr("« Tous les fichiers » accepte tout."))));
   }
 
   function selectPreset(id) {
@@ -1320,11 +1595,12 @@
     try { localStorage.setItem("preset", S.preset); } catch { /* */ }
     history.replaceState(null, "", `#${S.preset}`);
     const p = currentPreset();
-    if (navOpen && p.group && !navOpen.has(p.group)) { navOpen.add(p.group); saveNavOpen(); }
+    const gk = p.gkey || p.group;
+    if (navOpen && gk && !navOpen.has(gk)) { navOpen.add(gk); saveNavOpen(); }
     if (navQuery) { navQuery = ""; $("#nav-search").value = ""; }
     renderNav();
     renderLinkbar();
-    $("#eyebrow").textContent = p.id === "all" ? "Atelier universel" : (p.group || "Outil");
+    $("#eyebrow").textContent = p.id === "all" ? tr("Atelier universel") : (p.group || tr("Outil"));
     $("#title").textContent = p.title || p.label;
     $("#desc").textContent = p.desc || "";
     const input = $("#file-input");
@@ -1334,7 +1610,7 @@
       const t = presetTarget(f, p);
       if (t) {
         f.target = t;
-        if (p.options) Object.assign(f.options, p.options);
+        applyPresetExtras(f, p);
       }
     }
     render();
@@ -1346,26 +1622,35 @@
     box.textContent = "";
     const pill = (ok, label, title) => h("span", { class: `tool${ok ? "" : " off"}`, title }, h("i"), label);
     box.append(
-      pill(!!T.ffmpeg, "FFmpeg", T.ffmpeg ? `FFmpeg ${T.ffmpeg}` : "FFmpeg introuvable"),
-      pill(!!T.libreoffice, "LibreOffice", T.libreoffice ? "Documents Office" : "Non installé"),
-      pill(!!T.calibre, "Calibre", T.calibre ? "Ebooks" : "Non installé"),
+      pill(!!T.ffmpeg, "FFmpeg", T.ffmpeg ? `FFmpeg ${T.ffmpeg}` : tr("FFmpeg introuvable")),
+      pill(!!T.libreoffice, "LibreOffice", tr(T.libreoffice ? "Documents Office" : "Non installé")),
+      pill(!!T.calibre, "Calibre", tr(T.calibre ? "Ebooks" : "Non installé")),
     );
     if (T.gpu) box.append(pill(true, "GPU", T.gpu));
   }
 
   // ------------------------------------------------------------ démarrage
   function bindUi() {
-    $("#btn-settings").innerHTML = `${svg("gear")}<span>Réglages</span>`;
+    window.I18N.translateDom(document.body);   // textes fixes de la page
+    $("#btn-settings").innerHTML = `${svg("gear")}<span>${tr("Réglages")}</span>`;
     $("#btn-settings").onclick = openSettings;
-    $("#btn-folder").innerHTML = `${svg("folder")}<span>Dossier de sortie</span>`;
-    $("#btn-folder").title = "Ouvrir le dossier où sont enregistrés les fichiers convertis";
-    $("#btn-history").title = "Historique des conversions";
+    $("#btn-theme").onclick = toggleTheme;
+    renderThemeButton();
+    darkQuery.addEventListener("change", renderThemeButton);
+    const other = window.I18N.lang === "en" ? "fr" : "en";
+    $("#btn-lang").textContent = other.toUpperCase();
+    $("#btn-lang").title = other === "en" ? "English" : "Français";
+    $("#btn-lang").setAttribute("aria-label", $("#btn-lang").title);
+    $("#btn-lang").onclick = () => switchLang(other);
+    $("#btn-folder").innerHTML = `${svg("folder")}<span>${tr("Dossier de sortie")}</span>`;
+    $("#btn-folder").title = tr("Ouvrir le dossier où sont enregistrés les fichiers convertis");
+    $("#btn-history").title = tr("Historique des conversions");
     $("#btn-folder").onclick = () => api("/api/open-folder", {}).catch((e) => toast(e.message, "error"));
-    $("#btn-history").innerHTML = `${svg("clock")}<span>Historique</span>`;
+    $("#btn-history").innerHTML = `${svg("clock")}<span>${tr("Historique")}</span>`;
     $("#btn-history").onclick = openHistory;
-    $("#btn-bulk").innerHTML = `${svg("sliders")}<span>Tout convertir en…</span>`;
+    $("#btn-bulk").innerHTML = `${svg("sliders")}<span>${tr("Tout convertir en…")}</span>`;
     $("#btn-bulk").onclick = (e) => openBulk(e.currentTarget);
-    $("#btn-clear").innerHTML = `${svg("trash")}<span>Vider la liste</span>`;
+    $("#btn-clear").innerHTML = `${svg("trash")}<span>${tr("Vider la liste")}</span>`;
     $("#btn-clear").onclick = clearList;
     $("#btn-all").onclick = convertAll;
     $("#drag-glyph").innerHTML = `<svg viewBox="0 0 120 72" aria-hidden="true">${glyph("drag", 2, 2, 116, 68)}</svg>`;
@@ -1396,6 +1681,14 @@
     window.addEventListener("paste", (e) => {
       const t = e.target;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      const images = [...((e.clipboardData && e.clipboardData.files) || [])].filter((f) => f.type.startsWith("image/"));
+      if (images.length) {
+        e.preventDefault();
+        const stamp = new Date().toLocaleString("sv-SE").replace(/:/g, "-");
+        addLocalFiles(images.map((img, i) => new File([img], `${tr("Capture")} ${stamp}${images.length > 1 ? ` (${i + 1})` : ""}.${(img.type.split("/")[1] || "png").replace("jpeg", "jpg")}`, { type: img.type })));
+        toast(tr("Image collée depuis le presse-papiers."), "ok");
+        return;
+      }
       const text = ((e.clipboardData && e.clipboardData.getData("text")) || "").trim();
       if (/^https?:\/\/\S+$/i.test(text)) { e.preventDefault(); addLink(text); }
     });
@@ -1424,6 +1717,7 @@
     window.addEventListener("resize", closePicker);
     $("#content").addEventListener("scroll", closePicker, { passive: true });
     window.addEventListener("beforeunload", (e) => {
+      if (reloading) return;
       if (Object.values(S.jobs).some((j) => j.status === "running" || j.status === "queued")) { e.preventDefault(); e.returnValue = ""; }
     });
     window.addEventListener("pagehide", () => { try { navigator.sendBeacon(`/api/bye?t=${encodeURIComponent(TOKEN)}`); } catch { /* */ } });
@@ -1434,7 +1728,7 @@
         if (res.files && res.files.length) {
           res.files.forEach(addRecord);
           render();
-          toast(`${res.files.length} fichier${res.files.length > 1 ? "s" : ""} ajouté${res.files.length > 1 ? "s" : ""}.`, "ok");
+          toast(trn(res.files.length, "{n} fichier ajouté.", "{n} fichiers ajoutés."), "ok");
         }
       } catch { /* */ }
     }, 2500);
@@ -1443,11 +1737,12 @@
   async function init() {
     bindUi();
     let st;
-    try { st = await api("/api/state"); } catch (e) { toast(`Serveur injoignable : ${e.message}`, "error"); return; }
+    try { st = await api("/api/state"); } catch (e) { toast(tr("Serveur injoignable : {msg}", { msg: e.message }), "error"); return; }
     Object.assign(S, {
       presets: st.presets, options: st.options, combine: st.combine, groups: st.groups, families: st.families,
       extFamily: st.ext_family, tools: st.tools, settings: st.settings,
     });
+    applyTheme(S.settings.theme);
     S.presetMap = Object.fromEntries(S.presets.map((p) => [p.id, p]));
     for (const j of st.jobs) S.jobs[j.id] = j;
     S.basePresets = S.presets;

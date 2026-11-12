@@ -221,9 +221,44 @@ def spotify_match(tools: dict, track: dict, cookies: str | None = None) -> str:
     return best.get("url") or f"https://www.youtube.com/watch?v={best['id']}"
 
 
-def write_tags(path, tags: dict, cover: bytes | None = None) -> None:
-    """Titre, artiste, année et pochette dans le fichier audio final (MP3, M4A, FLAC, OGG, OPUS)."""
+def write_cover(path, cover: bytes) -> None:
+    """Pochette (JPEG) intégrée au fichier audio : MP3, M4A, FLAC, OGG, OPUS. Lève une erreur si impossible."""
     import base64
+    import mutagen
+    ext = Path(path).suffix.lower()
+    if ext == ".mp3":
+        from mutagen.id3 import APIC, ID3, ID3NoHeaderError
+        try:
+            id3 = ID3(str(path))
+        except ID3NoHeaderError:
+            id3 = ID3()
+        id3.delall("APIC")
+        id3.add(APIC(encoding=3, mime="image/jpeg", type=3, desc="Cover", data=cover))
+        id3.save(str(path), v2_version=3)
+    elif ext in (".m4a", ".m4b", ".m4r", ".mp4", ".alac"):
+        from mutagen.mp4 import MP4, MP4Cover
+        m4 = MP4(str(path))
+        m4["covr"] = [MP4Cover(cover, imageformat=MP4Cover.FORMAT_JPEG)]
+        m4.save()
+    elif ext in (".flac", ".ogg", ".opus"):
+        from mutagen.flac import FLAC, Picture
+        pic = Picture()
+        pic.type, pic.mime, pic.data = 3, "image/jpeg", cover
+        if ext == ".flac":
+            fl = FLAC(str(path))
+            fl.clear_pictures()
+            fl.add_picture(pic)
+            fl.save()
+        else:
+            og = mutagen.File(str(path))
+            og["metadata_block_picture"] = [base64.b64encode(pic.write()).decode("ascii")]
+            og.save()
+    else:
+        raise UserError("Ce format audio ne peut pas contenir de pochette.")
+
+
+def write_tags(path, tags: dict, cover: bytes | None = None) -> None:
+    """Titre, artiste, album, année et pochette dans le fichier audio final (MP3, M4A, FLAC, OGG, OPUS)."""
     try:
         import mutagen
         f = mutagen.File(str(path), easy=True)
@@ -235,33 +270,8 @@ def write_tags(path, tags: dict, cover: bytes | None = None) -> None:
             if tags.get(key):
                 f[key] = [str(tags[key])]
         f.save()
-        if not cover:
-            return
-        ext = Path(path).suffix.lower()
-        if ext == ".mp3":
-            from mutagen.id3 import APIC, ID3
-            id3 = ID3(str(path))
-            id3.delall("APIC")
-            id3.add(APIC(encoding=3, mime="image/jpeg", type=3, desc="Cover", data=cover))
-            id3.save(v2_version=3)
-        elif ext in (".m4a", ".m4b", ".m4r", ".mp4", ".alac"):
-            from mutagen.mp4 import MP4, MP4Cover
-            m4 = MP4(str(path))
-            m4["covr"] = [MP4Cover(cover, imageformat=MP4Cover.FORMAT_JPEG)]
-            m4.save()
-        elif ext in (".flac", ".ogg", ".opus"):
-            from mutagen.flac import FLAC, Picture
-            pic = Picture()
-            pic.type, pic.mime, pic.data = 3, "image/jpeg", cover
-            if ext == ".flac":
-                fl = FLAC(str(path))
-                fl.clear_pictures()
-                fl.add_picture(pic)
-                fl.save()
-            else:
-                og = mutagen.File(str(path))
-                og["metadata_block_picture"] = [base64.b64encode(pic.write()).decode("ascii")]
-                og.save()
+        if cover:
+            write_cover(path, cover)
     except Exception:
         pass                                     # les étiquettes sont un bonus : la conversion reste valide
 

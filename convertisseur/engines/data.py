@@ -91,7 +91,9 @@ def _records_table(records):
     return [keys] + [[_flat(r.get(k)) for k in keys] for r in records]
 
 
-def to_tables(obj, name="Données") -> list[tuple[str, list[list]]]:
+def to_tables(obj, name=None) -> list[tuple[str, list[list]]]:
+    from ..i18n import tr
+    name = name or tr("Données")
     if isinstance(obj, list):
         if obj and all(isinstance(r, dict) for r in obj):
             return [(name, _records_table(obj))]
@@ -106,7 +108,7 @@ def to_tables(obj, name="Données") -> list[tuple[str, list[list]]]:
                 inner = to_tables(v, str(k))
                 if inner and len(inner[0][1]) > 1:
                     return inner
-        rows = [["clé", "valeur"]]
+        rows = [[tr("clé"), tr("valeur")]]
 
         def walk(prefix, val):
             if isinstance(val, dict):

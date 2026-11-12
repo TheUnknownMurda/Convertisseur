@@ -18,7 +18,8 @@ import traceback
 from pathlib import Path
 
 from . import formats as F
-from . import graph
+from . import graph, i18n
+from .i18n import tr
 from .util import FinalError, UserError, hide_path, rmtree_quiet, safe_name, unique_path
 
 
@@ -37,7 +38,7 @@ class Ctx:
         self.tmp = Path(spec["tmp_dir"])
         self.tmp.mkdir(parents=True, exist_ok=True)
         self.stage = self.out_dir / f".convertisseur-{self.job_id}"
-        self.stem = safe_name(Path(self.inp["name"]).stem) or "fichier"
+        self.stem = safe_name(Path(self.inp["name"]).stem) or tr("fichier")
         self.last = True
         self.keep_alive: list = []
         self.tags: dict | None = None          # étiquettes à écrire dans le fichier final (Spotify)
@@ -95,8 +96,10 @@ def run_path(ctx: Ctx, path: list[tuple], src: Path, base=(0.0, 1.0)) -> list[Pa
         acc += weights[i]
         ext = F.OUT[d][2] if d in F.OUT else d
         name = f"{ctx.stem}.{ext}"
-        if last and (d == "pdf_small" or ext.lower() == Path(ctx.inp["name"]).suffix.lstrip(".").lower()):
-            name = f"{ctx.stem} ({'compressé' if d == 'pdf_small' else 'converti'}).{ext}"
+        if last and d in F.SUFFIX:
+            name = f"{ctx.stem} {tr(f'({F.SUFFIX[d]})')}.{ext}"
+        elif last and ext.lower() == Path(ctx.inp["name"]).suffix.lstrip(".").lower():
+            name = f"{ctx.stem} {tr('(converti)')}.{ext}"
         dst = (ctx.stage_dir() / name) if last else (ctx.tmp / f"etape{i + 1}.{ext}")
         if len(path) > 1:
             ctx.progress(0, f"Étape {i + 1}/{len(path)} : {F.OUT.get(s, (s.upper(),))[0] if s in F.OUT else s.upper()}"
@@ -117,10 +120,21 @@ def convert(ctx: Ctx) -> list[Path]:
         if ctx.mode == "combine_subs":
             return media.add_subtitles(ctx, items, ctx.out_dir)
         if ctx.mode == "combine_zip":
-            return archives.combine(ctx, items, ctx.stage_dir(), ctx.opts.get("zip_fmt") or "zip")
+            return archives.combine(ctx, items, ctx.stage_dir(), ctx.opts.get("zip_fmt") or "zip",
+                                    (ctx.opts.get("password") or "").strip())
+        if ctx.mode in ("combine_logo", "combine_soundtrack", "combine_cover"):
+            from .engines import mediatools
+            return getattr(mediatools, ctx.mode)(ctx, items, ctx.out_dir)
+        if ctx.mode == "combine_collage":
+            from .engines import imagetools
+            fmt = ctx.opts.get("collage_fmt") or "jpg"
+            return imagetools.collage(ctx, items, ctx.stage_dir() / f"{ctx.stem} {tr('(collage)')}.{fmt}", ctx.opts)
+        if ctx.mode in ("combine_rename", "combine_hash"):
+            from .engines import filetools
+            return getattr(filetools, ctx.mode)(ctx, items, ctx.stage_dir())
         ext = F.COMBINE[ctx.mode]["ext"]
         label = {"combine_pdf": "fusion", "combine_gif": "animation", "combine_video": "diaporama"}[ctx.mode]
-        dst = ctx.stage_dir() / f"{ctx.stem} ({label}).{ext}"
+        dst = ctx.stage_dir() / f"{ctx.stem} {tr(f'({label})')}.{ext}"
         fn = {"combine_pdf": lambda: images.images_to_pdf(ctx, items, dst, ctx.opts.get("img_page") or "a4"),
               "combine_gif": lambda: images.combine_gif(ctx, items, dst),
               "combine_video": lambda: images.combine_video(ctx, items, dst)}[ctx.mode]
@@ -152,9 +166,13 @@ def convert(ctx: Ctx) -> list[Path]:
                 ctx._span = base
                 ctx.progress(0, "Nouvel essai par un autre chemin…")
             outs = run_path(ctx, path, src, base)
-            if ctx.tags and outs:                # morceau Spotify : titre, artiste, pochette
+            tags = dict(ctx.tags or {})          # morceau Spotify, puis étiquettes saisies dans les réglages
+            for key, opt in (("title", "tag_title"), ("artist", "tag_artist"), ("album", "tag_album"), ("date", "tag_year")):
+                if (ctx.opts.get(opt) or "").strip():
+                    tags[key] = ctx.opts[opt].strip()
+            if (tags or ctx.cover) and outs and Path(outs[0]).is_file():
                 from .engines.download import write_tags
-                write_tags(outs[0], ctx.tags, ctx.cover)
+                write_tags(outs[0], tags, ctx.cover)
             return outs
         except FinalError:
             raise                    # le fichier lui-même bloque : un autre chemin n'y changerait rien
@@ -182,6 +200,7 @@ def _protocol():
 
 def main() -> int:
     spec = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+    i18n.set_lang(spec.get("lang"))
     emit = _protocol()
     ctx = Ctx(spec, emit)
     try:

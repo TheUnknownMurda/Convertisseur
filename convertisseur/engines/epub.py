@@ -10,6 +10,7 @@ from pathlib import Path
 from urllib.parse import unquote
 from xml.etree import ElementTree as ET
 
+from ..i18n import tr
 from .htmlconv import Node, _attr, _esc, load_image_src, parse_html, body_of, serialize, to_data_uri
 
 CSS = """body { font-family: serif; line-height: 1.5; margin: 0 4%; }
@@ -122,7 +123,7 @@ def build_epub(dst, title: str, author: str, chapters: list[tuple[str, str]], im
             manifest.append(f'<item id="i_{name.replace(".", "_")}" href="images/{name}" media-type="{mime}"/>')
         nav = ('<?xml version="1.0" encoding="utf-8"?>\n<!DOCTYPE html>\n<html xmlns="http://www.w3.org/1999/xhtml" '
                f'xmlns:epub="http://www.idpf.org/2007/ops" lang="{lang}"><head><meta charset="utf-8"/>'
-               f'<title>{_esc(title)}</title></head><body><nav epub:type="toc" id="toc"><h1>Table des matières</h1>'
+               f'<title>{_esc(title)}</title></head><body><nav epub:type="toc" id="toc"><h1>{_esc(tr("Table des matières"))}</h1>'
                f'<ol>{"".join(nav_items)}</ol></nav></body></html>')
         z.writestr("OEBPS/nav.xhtml", nav)
         manifest.append('<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>')

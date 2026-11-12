@@ -222,9 +222,15 @@ def convert_image(ctx, src, sfmt, dst, d):
     ctx.progress(None, "Conversion de l'image…")
     img = open_image(src, sfmt, svg_width=o.get("svg_width"))
     icc, exif = img.info.get("icc_profile"), exif_bytes(img)
+    if o.get("strip_meta"):                       # confidentialité : EXIF, GPS, XMP retirés (profil couleur gardé)
+        exif = None
+        img.info = {k: v for k, v in img.info.items() if k == "icc_profile"}
     img = normalize(img)
     if sfmt not in F.SVG_IN:
         img = fit(img, o.get("max_w"), o.get("max_h"))
+    if o:
+        from .imagetools import apply_edits
+        img = apply_edits(img, o)
     limit = int(o.get("target_kb") or 0) * 1024
     if limit and d in F.LOSSY_IMAGE:
         Path(dst).write_bytes(fit_size(img, d, o, limit, icc, exif))

@@ -95,13 +95,17 @@ def convert(ctx, src, sfmt, dst, d):
     return [pack(ctx, work, dst, d)]
 
 
-def combine(ctx, items, dst_dir: Path, kind: str) -> list[Path]:
+def combine(ctx, items, dst_dir: Path, kind: str, password: str = "") -> list[Path]:
     ext = {"zip": "zip", "7z": "7z"}.get(kind, "zip")
-    dst = dst_dir / f"{ctx.stem} (archive).{ext}"
+    from ..i18n import tr
+    dst = dst_dir / f"{ctx.stem} {tr('(protégé)' if password else '(archive)')}.{ext}"
     seen, files = set(), []
     for path, _, name in items:
         if Path(path).name in seen:            # deux fichiers de même nom : on garde le premier
             continue
         seen.add(Path(path).name)
         files.append(Path(path))
+    if password:                               # chiffrement AES-256 (7-Zip)
+        from .filetools import protected_archive
+        return [protected_archive(ctx, files, dst, password, ext)]
     return [pack(ctx, files[0].parent, dst, ext, names=files)]

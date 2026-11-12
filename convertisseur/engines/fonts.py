@@ -111,7 +111,8 @@ def preview(ctx, src, sfmt, dst, d):
     plain = _as_sfnt(ctx, src)
     font = _open(plain)
     name = font["name"].getDebugName(4) or Path(src).stem
-    text = (ctx.opts.get("font_text") or "").strip() or SAMPLE
+    from ..i18n import tr
+    text = (ctx.opts.get("font_text") or "").strip() or tr(SAMPLE)
     sizes = [16, 24, 36, 48, 72]
     if d == "pdf":
         import pymupdf

@@ -25,7 +25,11 @@
     <nav class="nav" id="nav" aria-label="Outils"></nav>
     <div class="side-foot">
       <div class="engines" id="tools"></div>
-      <button class="side-btn" id="btn-settings" type="button"></button>
+      <div class="side-row">
+        <button class="side-btn" id="btn-settings" type="button"></button>
+        <button class="side-icon" id="btn-theme" type="button"></button>
+        <button class="side-icon side-lang" id="btn-lang" type="button"></button>
+      </div>
     </div>
   </aside>
   <div class="scrim" id="scrim"></div>
@@ -46,6 +50,7 @@
 
     <div class="content" id="content">
       <section class="drop" id="drop" tabindex="0" role="button" aria-label="Ajouter des fichiers"></section>
+      <section class="panel" id="panel" hidden></section>
       <section class="linkbar" id="linkbar" hidden>
         <div class="link-art" id="link-art" hidden></div>
         <form id="link-form" autocomplete="off">
@@ -87,6 +92,7 @@
 </div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
 <input type="file" id="file-input" multiple hidden>
+<script src="/web/i18n.js?v={{VERSION}}"></script>
 <script src="/web/app.js?v={{VERSION}}"></script>
 </body>
 </html>

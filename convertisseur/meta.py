@@ -54,7 +54,7 @@ def classify(tools: dict, path, name: str) -> dict:
                     meta["encrypted"] = True
     except Exception:
         meta["unreadable"] = True
-    return {"ext": ext, "fmt": fmt, "family": family, "meta": meta}
+    return {"ext": ext, "fmt": fmt or "fichier", "family": family or "file", "meta": meta}
 
 
 def thumbnail(tools: dict, path, fmt: str, family: str, out: Path, size: int = 160) -> bool:

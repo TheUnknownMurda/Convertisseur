@@ -36,7 +36,8 @@ sys.path.insert(0, str(APP_DIR))
 
 from flask import Flask, Response, abort, jsonify, request, send_file, send_from_directory  # noqa: E402
 
-from convertisseur import __version__, graph, meta  # noqa: E402
+from convertisseur import __version__, graph, i18n, meta  # noqa: E402
+from convertisseur.i18n import tr  # noqa: E402
 from convertisseur import formats as F  # noqa: E402
 from convertisseur import tools as T  # noqa: E402
 from convertisseur.util import NO_WINDOW, kill_tree, rmtree_quiet, safe_name  # noqa: E402
@@ -71,7 +72,8 @@ class Settings:
         self.path = path
         self.lock = threading.Lock()
         self.data = {"output_dir": str(T.downloads_dir() / "Convertisseur"), "next_to_source": False,
-                     "open_folder": False, "gpu": True, "parallel": 2, "cookies": "none", "favorites": []}
+                     "open_folder": False, "gpu": True, "parallel": 2, "cookies": "none", "favorites": [],
+                     "theme": "system", "lang": "auto"}
         try:
             saved = json.loads(path.read_text(encoding="utf-8"))
             self.data.update({k: v for k, v in saved.items() if k in self.data})
@@ -95,6 +97,10 @@ class Settings:
                 self.data["favorites"] = [f for f in d["favorites"] if isinstance(f, dict) and f.get("target")][:50]
             if d.get("cookies") in COOKIE_BROWSERS:
                 self.data["cookies"] = d["cookies"]
+            if d.get("theme") in ("system", "light", "dark"):
+                self.data["theme"] = d["theme"]
+            if d.get("lang") in ("auto", "fr", "en"):
+                self.data["lang"] = d["lang"]
             if "parallel" in d:
                 try:
                     self.data["parallel"] = max(1, min(4, int(d["parallel"])))
@@ -108,6 +114,25 @@ class Settings:
 
 
 SETTINGS = Settings(APP_DIR / "config.json")
+
+
+def system_lang() -> str:
+    """Langue de l'interface de Windows : français si c'est du français, sinon anglais."""
+    try:
+        import ctypes
+        lcid = ctypes.windll.kernel32.GetUserDefaultUILanguage()
+        return "fr" if (lcid & 0x3FF) == 0x0C else "en"
+    except Exception:
+        import locale
+        return "fr" if (locale.getlocale()[0] or "").lower().startswith(("fr", "french")) else "en"
+
+
+def current_lang() -> str:
+    lang = SETTINGS["lang"]
+    return lang if lang in ("fr", "en") else system_lang()
+
+
+i18n.set_lang(current_lang())
 
 
 # ---------------------------------------------------------------- fichiers
@@ -172,10 +197,12 @@ class FileStore:
     @staticmethod
     def public(rec: dict) -> dict:
         targets = graph.targets_for(rec["fmt"], rec["ext"], rec["family"], TOOLS) if rec["family"] else []
+        default = graph.default_target(rec["family"], rec["ext"], targets) if targets else None
+        if i18n.LANG != "fr":
+            targets = [i18n.target(t) for t in targets]
         return {"id": rec["id"], "name": rec["name"], "ext": rec["ext"], "fmt": rec["fmt"], "family": rec["family"],
-                "family_label": F.FAMILY_LABEL.get(rec["family"], "Inconnu"), "size": rec["size"],
-                "meta": rec["meta"], "targets": targets,
-                "default": graph.default_target(rec["family"], rec["ext"], targets) if targets else None,
+                "family_label": tr(F.FAMILY_LABEL.get(rec["family"], "Inconnu")), "size": rec["size"],
+                "meta": rec["meta"], "targets": targets, "default": default,
                 "source": rec.get("url") or (None if rec["temp"] else rec["path"]), "url": rec.get("url")}
 
 
@@ -209,7 +236,7 @@ class Job:
                 outs.append({"name": pp.name, "path": str(pp), "is_dir": False, "size": 0, "missing": True})
         return {"id": self.id, "mode": self.mode, "file_ids": [r["id"] for r in self.recs],
                 "names": [r["name"] for r in self.recs], "target": self.target, "status": self.status,
-                "progress": self.progress, "message": self.message, "outputs": outs, "error": self.error,
+                "progress": self.progress, "message": tr(self.message), "outputs": outs, "error": tr(self.error),
                 "created": self.created, "started": self.started, "ended": self.ended}
 
 
@@ -231,6 +258,13 @@ class History:
             self.items = ([entry] + [i for i in self.items if i.get("id") != job.id])[:200]
             self._save()
 
+    def add_entry(self, names: list[str], label: str, outputs: list[str]):
+        entry = {"id": uuid.uuid4().hex[:12], "date": time.time(), "names": names, "target": label,
+                 "outputs": outputs}
+        with self.lock:
+            self.items = ([entry] + self.items)[:200]
+            self._save()
+
     def clear(self):
         with self.lock:
             self.items = []
@@ -246,7 +280,8 @@ class History:
         out = []
         for e in self.items:
             outs = [{"path": o, "name": Path(o).name, "exists": Path(o).exists()} for o in e.get("outputs", [])]
-            out.append({**e, "outputs": outs})
+            out.append({**e, "target": tr(e.get("target")), "names": [tr(n) for n in e.get("names", [])],
+                        "outputs": outs})
         return out
 
 
@@ -293,7 +328,7 @@ class JobManager:
     def _run(self, job: Job):
         work = RUN_DIR / "jobs" / job.id
         work.mkdir(parents=True, exist_ok=True)
-        spec = {"job_id": job.id, "mode": job.mode, "target": job.target, "options": job.options,
+        spec = {"job_id": job.id, "mode": job.mode, "target": job.target, "options": job.options, "lang": i18n.LANG,
                 "tools": TOOLS, "gpu": TOOLS.get("gpu") if SETTINGS["gpu"] else None, "cookies": SETTINGS["cookies"],
                 "out_dir": str(job.out_dir), "tmp_dir": str(work / "tmp"),
                 "inputs": [{"path": r["path"], "name": r["name"], "fmt": r["fmt"], "family": r["family"],
@@ -403,11 +438,11 @@ class Dialogs:
                 root.lift()
                 root.update()
                 if kind == "files":
-                    res = filedialog.askopenfilenames(parent=root, title=args.get("title") or "Choisir des fichiers",
-                                                      filetypes=args.get("filetypes") or [("Tous les fichiers", "*.*")])
+                    res = filedialog.askopenfilenames(parent=root, title=args.get("title") or tr("Choisir des fichiers"),
+                                                      filetypes=args.get("filetypes") or [(tr("Tous les fichiers"), "*.*")])
                     res = list(root.tk.splitlist(res)) if isinstance(res, str) else list(res or [])
                 else:
-                    res = filedialog.askdirectory(parent=root, title=args.get("title") or "Choisir un dossier",
+                    res = filedialog.askdirectory(parent=root, title=args.get("title") or tr("Choisir un dossier"),
                                                   initialdir=args.get("initial") or None, mustexist=False)
                 root.update()
                 reply.put(res)
@@ -444,7 +479,7 @@ STATE = {"last_seen": time.time(), "bye_at": None}
 
 
 def bad(msg, code=400):
-    return jsonify({"error": msg}), code
+    return jsonify({"error": tr(msg)}), code
 
 
 @app.before_request
@@ -463,6 +498,10 @@ def guard():
 def index():
     page = (APP_DIR / "web" / "index.html").read_text(encoding="utf-8")
     page = page.replace("{{TOKEN}}", TOKEN).replace("{{VERSION}}", __version__)
+    theme = SETTINGS["theme"]                      # appliqué avant le premier affichage (pas de flash)
+    page = page.replace('<html lang="fr">', f'<html lang="{current_lang()}"' + (f' data-theme="{theme}"' if theme != "system" else "") + ">")
+    if theme != "system":
+        page = page.replace('<meta name="color-scheme" content="light dark">', f'<meta name="color-scheme" content="{theme}">')
     return Response(page, headers={"Cache-Control": "no-store", "Content-Type": "text/html; charset=utf-8"})
 
 
@@ -494,8 +533,10 @@ def tools_public() -> dict:
 def state():
     TOOLS_READY.wait(20)
     return jsonify({
-        "version": __version__, "presets": F.presets_for_client(), "options": F.OPTIONS, "combine": F.COMBINE,
-        "groups": F.GROUP_ORDER, "families": F.FAMILY_LABEL,
+        "version": __version__, "lang": current_lang(),
+        "presets": [i18n.preset(p) for p in F.presets_for_client()], "options": i18n.options(F.OPTIONS),
+        "combine": i18n.combine(F.COMBINE), "groups": F.GROUP_ORDER,
+        "families": {k: tr(v) for k, v in F.FAMILY_LABEL.items()},
         "ext_family": {e: f for e, f in F.EXT_FAMILY.items() if e != "webp_anim"},
         "tools": tools_public(), "settings": SETTINGS.public(),
         "files": [FileStore.public(r) for r in FILES.files.values()],
@@ -528,11 +569,11 @@ def pick():
     accept = data.get("accept") or []
     filetypes = []
     if accept:
-        filetypes.append(("Fichiers pris en charge", " ".join(f"*.{e}" for e in accept)))
-    filetypes.append(("Tous les fichiers", "*.*"))
+        filetypes.append((tr("Fichiers pris en charge"), " ".join(f"*.{e}" for e in accept)))
+    filetypes.append((tr("Tous les fichiers"), "*.*"))
     if not DIALOGS.available:
         return jsonify({"unavailable": True})
-    paths = DIALOGS.ask("files", filetypes=filetypes, title="Choisir des fichiers à convertir")
+    paths = DIALOGS.ask("files", filetypes=filetypes, title=tr("Choisir des fichiers à convertir"))
     if paths is None:
         return jsonify({"unavailable": True})
     recs = []
@@ -595,6 +636,121 @@ def history_open():
     paths = {o for e in HISTORY.items for o in e.get("outputs", [])}
     target = data.get("path")
     if target not in paths or not Path(target).exists():
+        return bad("Ce fichier a été déplacé ou supprimé.")
+    if data.get("reveal"):
+        reveal(target)
+    else:
+        os.startfile(target)
+    return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------- créer : QR code, code-barres, texte, enregistrements
+def _out_folder() -> Path:
+    folder = Path(SETTINGS["output_dir"])
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
+
+
+@app.post("/api/generate")
+def generate():
+    from convertisseur.engines import generators
+    from convertisseur.util import UserError
+    data = request.get_json(silent=True) or {}
+    kind = data.get("type")
+    try:
+        if kind == "qr":
+            path = generators.make_qr(data, _out_folder())
+            label = "QR code"
+        elif kind == "barcode":
+            path = generators.make_barcode(data, _out_folder())
+            label = "Code-barres"
+        else:
+            return bad("Générateur inconnu.")
+    except UserError as e:
+        return bad(str(e))
+    except OSError as e:
+        return bad(f"Dossier de sortie inaccessible : {e.strerror or e}")
+    HISTORY.add_entry([label], label, [str(path)])
+    return jsonify({"path": str(path), "name": path.name, "size": path.stat().st_size,
+                    "preview": generators.preview(path)})
+
+
+@app.post("/api/text-file")
+def text_file():
+    data = request.get_json(silent=True) or {}
+    text = (data.get("text") or "").strip()
+    if not text:
+        return bad("Saisissez ou collez un texte.")
+    if len(text) > 2_000_000:
+        return bad("Texte trop long (2 millions de caractères au plus).")
+    first = re.sub(r"\s+", " ", text)[:40].strip(" .,;:!?") or "Texte"
+    name = safe_name(data.get("name") or first) + ".txt"
+    folder = RUN_DIR / "imports" / uuid.uuid4().hex[:10]
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / name
+    path.write_text(text + "\n", encoding="utf-8")
+    return jsonify(FileStore.public(FILES.add(path, name, temp=True)))
+
+
+RECORDER = None
+
+
+def _recorder():
+    global RECORDER
+    if RECORDER is None:
+        from convertisseur.recorder import Recorder
+        RECORDER = Recorder()
+    return RECORDER
+
+
+@app.get("/api/record/devices")
+def record_devices():
+    from convertisseur.recorder import list_microphones
+    mics = list_microphones(TOOLS["ffmpeg"]) if TOOLS.get("ffmpeg") else []
+    return jsonify({"microphones": mics, **_recorder().status()})
+
+
+@app.get("/api/record/status")
+def record_status():
+    return jsonify(_recorder().status())
+
+
+@app.post("/api/record/start")
+def record_start():
+    from convertisseur.util import UserError
+    data = request.get_json(silent=True) or {}
+    kind = "audio" if data.get("kind") == "audio" else "screen"
+    try:
+        st = _recorder().start(TOOLS, _out_folder(), kind, (data.get("mic") or "").strip() or None,
+                               int(data.get("fps") or 30), TOOLS.get("gpu") if SETTINGS["gpu"] else None)
+    except UserError as e:
+        return bad(str(e))
+    except (OSError, ValueError) as e:
+        return bad(f"Enregistrement impossible : {e}")
+    return jsonify(st)
+
+
+@app.post("/api/record/stop")
+def record_stop():
+    from convertisseur.util import UserError
+    rec = _recorder()
+    kind = rec.kind
+    try:
+        path = rec.stop(TOOLS)
+    except UserError as e:
+        return bad(str(e))
+    label = "Enregistrement d'écran" if kind == "screen" else "Enregistrement audio"
+    HISTORY.add_entry([label], label, [str(path)])
+    return jsonify({"path": str(path), "name": path.name, "size": path.stat().st_size})
+
+
+@app.post("/api/open-path")
+def open_path():
+    """Ouvre (ou montre dans l'Explorateur) un fichier produit, tant qu'il figure dans l'historique."""
+    data = request.get_json(silent=True) or {}
+    target = data.get("path")
+    known = {o for e in HISTORY.items for o in e.get("outputs", [])}
+    if target not in known or not Path(target).exists():
         return bad("Ce fichier a été déplacé ou supprimé.")
     if data.get("reveal"):
         reveal(target)
@@ -784,12 +940,13 @@ def set_settings():
     with JOBS.cv:
         result = SETTINGS.update(data)
         JOBS.cv.notify_all()
+    i18n.set_lang(current_lang())
     return jsonify(result)
 
 
 @app.post("/api/pick-folder")
 def pick_folder():
-    path = DIALOGS.ask("folder", initial=SETTINGS["output_dir"], title="Dossier où enregistrer les conversions")
+    path = DIALOGS.ask("folder", initial=SETTINGS["output_dir"], title=tr("Dossier où enregistrer les conversions"))
     return jsonify({"path": path or None, "unavailable": not DIALOGS.available})
 
 
@@ -806,7 +963,7 @@ def make_shortcut(lnk: Path):
     script = (f"$s = (New-Object -ComObject WScript.Shell).CreateShortcut('{q(lnk)}'); "
               f"$s.TargetPath = '{q(pyw)}'; $s.Arguments = '\"{q(APP_DIR / 'app.py')}\"'; "
               f"$s.WorkingDirectory = '{q(APP_DIR)}'; $s.IconLocation = '{q(icon)}'; "
-              f"$s.Description = 'Convertisseur de fichiers local'; $s.Save()")
+              f"$s.Description = '{q(tr('Convertisseur de fichiers local'))}'; $s.Save()")
     r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script], capture_output=True,
                        timeout=30, creationflags=NO_WINDOW)
     if r.returncode != 0 or not lnk.exists():

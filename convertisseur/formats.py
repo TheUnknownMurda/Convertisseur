@@ -50,7 +50,7 @@ FAMILY_SETS = [
 ]
 EXT_FAMILY = {ext: fam for fam, exts in FAMILY_SETS for ext in exts}
 
-FAMILY_LABEL = {"video": "Vidéo", "audio": "Audio", "image": "Image", "anim": "Animation", "pdf": "PDF",
+FAMILY_LABEL = {"file": "Fichier", "video": "Vidéo", "audio": "Audio", "image": "Image", "anim": "Animation", "pdf": "PDF",
                 "doc": "Document", "sheet": "Tableur", "slides": "Présentation", "ebook": "Ebook",
                 "subs": "Sous-titres", "font": "Police", "archive": "Archive", "data": "Données", "web": "Page web"}
 
@@ -89,7 +89,18 @@ _out("Police", ("ttf", "TTF"), ("otf", "OTF"), ("woff", "WOFF"), ("woff2", "WOFF
 _out("Archive", ("zip", "ZIP"), ("7z", "7Z"), ("tar", "TAR"), ("tgz", "TAR.GZ", "tar.gz"),
      ("folder", "Dossier (extraire)", ""))
 _out("Données", ("json", "JSON"), ("yaml", "YAML"), ("xml", "XML"), ("toml", "TOML"))
-_out("Document", ("pdf_small", "PDF compressé", "pdf"))
+_out("Outils PDF", ("pdf_small", "Compresser le PDF", "pdf"), ("pdf_split", "Diviser (un fichier par page)", ""),
+     ("pdf_pages", "Extraire ou supprimer des pages", "pdf"), ("pdf_rotate", "Pivoter les pages", "pdf"),
+     ("pdf_protect", "Protéger par mot de passe", "pdf"), ("pdf_unlock", "Retirer le mot de passe", "pdf"),
+     ("pdf_watermark", "Ajouter un filigrane", "pdf"), ("pdf_number", "Numéroter les pages", "pdf"),
+     ("pdf_ocr", "Rendre le texte cherchable (OCR)", "pdf"), ("pdf_images", "Extraire les images", ""),
+     ("pdf_clean", "Supprimer les métadonnées", "pdf"))
+_out("Outils image", ("img_nobg", "Supprimer l'arrière-plan (PNG)", "png"),
+     ("qr_read", "Lire un QR code ou un code-barres", "txt"), ("favicon", "Kit d'icônes pour site web (ZIP)", "zip"))
+_out("Outils vidéo", ("contact_sheet", "Planche d'aperçu (JPG)", "jpg"), ("video_frames", "Extraire des images (ZIP)", "zip"),
+     ("media_split", "Découper en morceaux", ""))
+_out("Outils fichier", ("hash", "Empreintes (SHA-256, MD5…)", "txt"), ("info", "Rapport d'informations (TXT)", "txt"),
+     ("protect", "Archive protégée par mot de passe", "7z"), ("split_vol", "Découper en volumes (7-Zip)", ""))
 _out("Image", ("frame", "Capture", "png"))       # interne : capture vidéo / spectrogramme (jamais proposé)
 _out("Ebook", ("epub", "EPUB"), ("mobi", "MOBI"), ("azw3", "AZW3"), ("fb2", "FB2"), ("lit", "LIT"), ("pdb", "PDB"),
      ("lrf", "LRF"), ("htmlz", "HTMLZ"), ("txtz", "TXTZ"), ("snb", "SNB"), ("tcr", "TCR"), ("rb", "RB"),
@@ -145,6 +156,23 @@ OFFERS = {
     "data": DATA_OUT,
     "web": WEB_OUT,
 }
+PDF_TOOLS = ["pdf_split", "pdf_pages", "pdf_rotate", "pdf_protect", "pdf_unlock", "pdf_watermark", "pdf_number",
+             "pdf_ocr", "pdf_images", "pdf_clean"]
+FILE_TOOLS = ["hash", "info", "protect", "split_vol"]
+OFFERS["pdf"] = OFFERS["pdf"] + PDF_TOOLS
+OFFERS["image"] = OFFERS["image"] + ["img_nobg", "qr_read", "favicon"]
+OFFERS["video"] = OFFERS["video"] + ["contact_sheet", "video_frames", "media_split"]
+OFFERS["audio"] = OFFERS["audio"] + ["media_split"]
+for _fam in list(OFFERS):
+    if _fam != "web":
+        OFFERS[_fam] = OFFERS[_fam] + FILE_TOOLS
+OFFERS["file"] = list(FILE_TOOLS)
+# Cibles d'outils : proposées même si l'extension de sortie est celle d'origine ; suffixe du fichier produit.
+SUFFIX = {"pdf_small": "compressé", "pdf_pages": "pages", "pdf_rotate": "pivoté", "pdf_protect": "protégé",
+          "pdf_unlock": "déverrouillé", "pdf_watermark": "filigrane", "pdf_number": "numéroté", "pdf_ocr": "cherchable",
+          "pdf_clean": "nettoyé", "img_nobg": "détouré", "qr_read": "contenu", "favicon": "icônes",
+          "contact_sheet": "aperçu", "video_frames": "images", "hash": "empreintes", "info": "infos"}
+SPECIAL = set(SUFFIX) | {"pdf_split", "pdf_images", "media_split", "protect", "split_vol"}
 SAME_FORMAT_OK = {"video", "audio", "image", "anim"}   # ré-encoder / redimensionner dans le même format
 
 PAGED = {"pdf", "doc", "sheet", "slides", "ebook"}
@@ -189,14 +217,17 @@ def context_group(family: str, target: str) -> str:
         return "Capture de la page"
     if family == "subs" and target in ("txt", "docx", "pdf"):
         return "Texte des dialogues"
+    if target == "media_split" and family == "audio":
+        return "Outils audio"
     return group
 
 
 GROUP_ORDER = ["Vidéo", "Animation", "Audio", "Image", "Document", "Sous-titres", "Données", "Tableur", "Présentation",
-               "Ebook", "Police", "Archive"]
+               "Ebook", "Police", "Archive", "Outils PDF", "Outils image", "Outils vidéo", "Outils audio", "Outils fichier"]
 PRIMARY_GROUP = {"video": "Vidéo", "audio": "Audio", "image": "Image", "anim": "Animation", "pdf": "Document",
                  "doc": "Document", "sheet": "Tableur", "slides": "Présentation", "ebook": "Ebook",
-                 "subs": "Sous-titres", "font": "Police", "archive": "Archive", "data": "Données", "web": "Document"}
+                 "subs": "Sous-titres", "font": "Police", "archive": "Archive", "data": "Données", "web": "Document",
+                 "file": "Outils fichier"}
 
 # ---------------------------------------------------------------- options
 # type : select | checkbox | range | number | text | time | color
@@ -266,29 +297,30 @@ OPTIONS: dict[str, dict] = {
     "whisper_translate": {"type": "checkbox", "label": "Traduire en anglais", "default": False},
     "subs_mode": {"type": "select", "label": "Source des sous-titres", "default": "auto", "choices": [
         ["auto", "Sous-titres intégrés s'il y en a, sinon transcription"], ["transcribe", "Toujours transcrire la parole"]]},
-    "auto_subs": {"type": "select", "label": "Sous-titres automatiques (Whisper)", "default": "no", "choices": [
+    "auto_subs": {"type": "select", "label": "Sous-titres automatiques (Whisper)", "default": "no", "section": "Sous-titres", "choices": [
         ["no", "Non"], ["burn", "Incrustés (toujours visibles)"], ["soft", "Intégrés (désactivables)"]]},
     "subs_burn": {"type": "select", "label": "Sous-titres", "default": "burn", "choices": [
         ["burn", "Incrustés (toujours visibles)"], ["soft", "Intégrés (désactivables)"]]},
-    "subs_style": {"type": "select", "label": "Taille des sous-titres incrustés", "default": "medium", "choices": [
+    "subs_style": {"type": "select", "label": "Taille des sous-titres incrustés", "default": "medium", "section": "Sous-titres", "choices": [
         ["small", "Petits"], ["medium", "Moyens"], ["large", "Grands"]]},
     "target_mb": {"type": "select", "label": "Taille maximale", "default": "", "choices": [
         ["", "Aucune limite"], ["8", "8 Mo"], ["10", "10 Mo (Discord)"], ["25", "25 Mo"],
         ["50", "50 Mo (Discord Nitro Basic)"], ["100", "100 Mo"], ["500", "500 Mo (Discord Nitro)"]]},
     "target_kb": {"type": "number", "label": "Taille max (Ko)", "placeholder": "aucune", "min": 5, "max": 200000},
-    "normalize": {"type": "checkbox", "label": "Normaliser le volume", "default": False},
-    "fade": {"type": "select", "label": "Fondu début/fin", "default": "0", "choices": [
+    "normalize": {"type": "checkbox", "label": "Normaliser le volume", "default": False, "section": "Son"},
+    "fade": {"type": "select", "label": "Fondu début/fin", "default": "0", "section": "Son", "choices": [
         ["0", "Aucun"], ["1", "1 s"], ["2", "2 s"], ["5", "5 s"]]},
-    "trim_silence": {"type": "checkbox", "label": "Couper les silences (début et fin)", "default": False},
-    "speed": {"type": "select", "label": "Vitesse", "default": "1", "choices": [
+    "trim_silence": {"type": "checkbox", "label": "Couper les silences (début et fin)", "default": False, "section": "Son"},
+    "speed": {"type": "select", "label": "Vitesse", "default": "1", "section": "Retouches", "choices": [
         ["0.5", "0,5×"], ["0.75", "0,75×"], ["1", "Normale"], ["1.25", "1,25×"], ["1.5", "1,5×"], ["2", "2×"]]},
-    "rotate": {"type": "select", "label": "Rotation", "default": "none", "choices": [
+    "rotate": {"type": "select", "label": "Rotation", "default": "none", "section": "Retouches", "choices": [
         ["none", "Aucune"], ["cw", "90° à droite"], ["ccw", "90° à gauche"], ["180", "180°"],
         ["hflip", "Miroir horizontal"], ["vflip", "Miroir vertical"]]},
-    "crop": {"type": "select", "label": "Recadrage", "default": "none", "choices": [
+    "crop": {"type": "select", "label": "Recadrage", "default": "none", "section": "Retouches", "choices": [
         ["none", "Aucun"], ["auto", "Auto (bandes noires)"], ["1:1", "Carré 1:1"], ["9:16", "Vertical 9:16"],
-        ["16:9", "Paysage 16:9"], ["4:5", "Portrait 4:5"], ["4:3", "4:3"]]},
-    "stabilize": {"type": "checkbox", "label": "Stabiliser l'image (plus lent)", "default": False},
+        ["16:9", "Paysage 16:9"], ["4:5", "Portrait 4:5"], ["4:3", "4:3"],
+        ["9:16b", "Vertical 9:16 sur fond flou (Reels, TikTok, Shorts)"], ["1:1b", "Carré sur fond flou"]]},
+    "stabilize": {"type": "checkbox", "label": "Stabiliser l'image (plus lent)", "default": False, "section": "Retouches"},
     "concat_fmt": {"type": "select", "label": "Format", "default": "auto", "choices": [
         ["auto", "Auto (MP4 s'il y a de la vidéo, sinon MP3)"], ["mp4", "MP4"], ["mkv", "MKV"], ["mp3", "MP3"],
         ["m4a", "M4A"], ["wav", "WAV"], ["flac", "FLAC"]]},
@@ -303,6 +335,107 @@ OPTIONS: dict[str, dict] = {
         [",", "Virgule ( , )"], [";", "Point-virgule ( ; )"], ["tab", "Tabulation"]]},
     "sheets": {"type": "select", "label": "Feuilles", "default": "first", "choices": [
         ["first", "Première feuille"], ["all", "Toutes (un fichier par feuille, ZIP)"]]},
+    # retouches d'image et de vidéo
+    "img_resize": {"type": "select", "label": "Taille", "default": "none", "section": "Retouches", "choices": [
+        ["none", "Taille d'origine"], ["75%", "75 %"], ["50%", "50 %"], ["25%", "25 %"], ["x2", "Agrandir ×2"],
+        ["x4", "Agrandir ×4"], ["3840", "3840 px (4K)"], ["1920", "1920 px (Full HD)"], ["1280", "1280 px"],
+        ["1080", "1080 px"], ["800", "800 px"], ["512", "512 px"], ["256", "256 px"]]},
+    "img_ratio": {"type": "select", "label": "Recadrer (proportions)", "default": "none", "section": "Retouches", "choices": [
+        ["none", "Aucun"], ["1:1", "Carré 1:1"], ["4:5", "Portrait 4:5 (Instagram)"], ["16:9", "Paysage 16:9"],
+        ["9:16", "Vertical 9:16 (stories)"], ["4:3", "4:3"], ["3:2", "3:2 (photo)"], ["2:3", "2:3"]]},
+    "img_adjust": {"type": "select", "label": "Filtre", "default": "none", "section": "Retouches", "choices": [
+        ["none", "Aucun"], ["bw", "Noir et blanc"], ["sepia", "Sépia"], ["contrast", "Contraste automatique"],
+        ["sharpen", "Plus net"], ["blur", "Flou"], ["invert", "Négatif"]]},
+    "fps_out": {"type": "select", "label": "Images par seconde", "default": "orig", "section": "Retouches", "choices": [
+        ["orig", "Originales"], ["60", "60"], ["30", "30"], ["25", "25"], ["24", "24 (cinéma)"], ["15", "15"], ["10", "10"]]},
+    "v_play": {"type": "select", "label": "Lecture", "default": "normal", "section": "Retouches", "choices": [
+        ["normal", "Normale"], ["reverse", "À l'envers"], ["boomerang", "Aller-retour (boomerang)"]]},
+    # effets sonores
+    "denoise": {"type": "checkbox", "label": "Réduire le bruit de fond", "default": False, "section": "Son"},
+    "bass": {"type": "select", "label": "Basses", "default": "0", "section": "Son", "choices": [
+        ["0", "Normales"], ["6", "Renforcées"], ["12", "Très renforcées"]]},
+    "gain": {"type": "select", "label": "Volume", "default": "0", "section": "Son", "choices": [
+        ["0", "Inchangé"], ["3", "+3 dB"], ["6", "+6 dB"], ["10", "+10 dB"], ["-3", "−3 dB"], ["-6", "−6 dB"],
+        ["-12", "−12 dB"]]},
+    "karaoke": {"type": "checkbox", "label": "Retirer la voix (karaoké, approximatif)", "default": False, "section": "Son"},
+    "reverse": {"type": "checkbox", "label": "Lire à l'envers", "default": False, "section": "Son"},
+    # filigrane
+    "wm_text": {"type": "text", "label": "Texte du filigrane", "placeholder": "ex. © Mon nom, CONFIDENTIEL", "section": "Filigrane"},
+    "wm_pos": {"type": "select", "label": "Position", "default": "diagonal", "section": "Filigrane", "choices": [
+        ["diagonal", "En diagonale"], ["tiled", "Répété partout"], ["center", "Au centre"], ["top", "En haut"],
+        ["bottom", "En bas"], ["tl", "En haut à gauche"], ["tr", "En haut à droite"], ["bl", "En bas à gauche"],
+        ["br", "En bas à droite"]]},
+    "wm_size": {"type": "select", "label": "Taille du texte", "default": "medium", "section": "Filigrane", "choices": [
+        ["small", "Petite"], ["medium", "Moyenne"], ["large", "Grande"]]},
+    "wm_opacity": {"type": "range", "label": "Opacité (%)", "default": 25, "min": 5, "max": 100, "section": "Filigrane"},
+    "wm_color": {"type": "color", "label": "Couleur", "default": "#808080", "section": "Filigrane"},
+    # étiquettes audio et confidentialité
+    "tag_title": {"type": "text", "label": "Titre", "placeholder": "inchangé", "section": "Étiquettes"},
+    "tag_artist": {"type": "text", "label": "Artiste", "placeholder": "inchangé", "section": "Étiquettes"},
+    "tag_album": {"type": "text", "label": "Album", "placeholder": "inchangé", "section": "Étiquettes"},
+    "tag_year": {"type": "text", "label": "Année", "placeholder": "ex. 2026", "section": "Étiquettes"},
+    "strip_meta": {"type": "checkbox", "label": "Supprimer les métadonnées (auteur, appareil, position GPS…)",
+                   "default": False, "section": "Confidentialité"},
+    # outils PDF
+    "split_mode": {"type": "select", "label": "Découpage", "default": "each", "choices": [
+        ["each", "Une page par fichier"], ["2", "Par groupes de 2 pages"], ["5", "Par groupes de 5 pages"],
+        ["10", "Par groupes de 10 pages"], ["ranges", "Selon les plages ci-contre"]]},
+    "split_ranges": {"type": "text", "label": "Plages (une par fichier)", "placeholder": "ex. 1-3, 4-6, 7-"},
+    "pages_mode": {"type": "select", "label": "Action", "default": "keep", "choices": [
+        ["keep", "Garder ces pages (dans cet ordre)"], ["remove", "Supprimer ces pages"]]},
+    "pdf_angle": {"type": "select", "label": "Rotation", "default": "90", "choices": [
+        ["90", "90° à droite"], ["270", "90° à gauche"], ["180", "180°"]]},
+    "password": {"type": "password", "label": "Mot de passe", "placeholder": "à choisir"},
+    "pdf_restrict": {"type": "checkbox", "label": "Interdire aussi l'impression, la copie et la modification", "default": False},
+    "num_fmt": {"type": "select", "label": "Format", "default": "n", "choices": [
+        ["n", "1, 2, 3…"], ["page", "Page 1"], ["of", "1 / 10"], ["page_of", "Page 1 sur 10"]]},
+    "num_pos": {"type": "select", "label": "Position", "default": "bc", "choices": [
+        ["bc", "En bas au centre"], ["br", "En bas à droite"], ["bl", "En bas à gauche"], ["tc", "En haut au centre"],
+        ["tr", "En haut à droite"], ["tl", "En haut à gauche"]]},
+    "num_start": {"type": "number", "label": "Premier numéro", "default": 1, "min": 0, "max": 99999},
+    "ocr_lang": {"type": "select", "label": "Langue du texte", "default": "auto", "choices": [
+        ["auto", "Langue de Windows"], ["fr", "Français"], ["en", "Anglais"], ["es", "Espagnol"], ["de", "Allemand"],
+        ["it", "Italien"], ["pt", "Portugais"]]},
+    # outils image
+    "nobg_model": {"type": "select", "label": "Qualité du détourage", "default": "precise", "choices": [
+        ["precise", "Précis (modèle de 175 Mo, téléchargé une fois)"], ["fast", "Rapide (modèle de 5 Mo)"]]},
+    "nobg_crop": {"type": "checkbox", "label": "Recadrer sur le sujet", "default": False},
+    "nobg_bg": {"type": "select", "label": "Fond", "default": "none", "choices": [
+        ["none", "Transparent"], ["white", "Blanc"], ["black", "Noir"]]},
+    # outils vidéo
+    "sheet_grid": {"type": "select", "label": "Grille", "default": "4x4", "choices": [
+        ["3x3", "3 × 3 (9 images)"], ["4x4", "4 × 4 (16 images)"], ["5x5", "5 × 5 (25 images)"], ["4x6", "4 × 6 (24 images)"]]},
+    "frames_rate": {"type": "select", "label": "Images", "default": "1", "choices": [
+        ["1", "1 par seconde"], ["2", "2 par seconde"], ["5", "5 par seconde"], ["10", "10 par seconde"],
+        ["all", "Toutes"]]},
+    "split_len": {"type": "select", "label": "Durée de chaque morceau", "default": "5m", "choices": [
+        ["15s", "15 secondes (stories)"], ["30s", "30 secondes"], ["60s", "1 minute"], ["5m", "5 minutes"],
+        ["10m", "10 minutes"], ["15m", "15 minutes"], ["30m", "30 minutes"], ["60m", "1 heure"]]},
+    # outils fichier
+    "vol_size": {"type": "select", "label": "Taille de chaque partie", "default": "25", "choices": [
+        ["5", "5 Mo"], ["10", "10 Mo"], ["25", "25 Mo (pièce jointe)"], ["100", "100 Mo"], ["700", "700 Mo (CD)"],
+        ["4000", "4 Go (clé FAT32)"]]},
+    # assemblages
+    "collage_cols": {"type": "select", "label": "Colonnes", "default": "0", "choices": [
+        ["0", "Automatique"], ["2", "2"], ["3", "3"], ["4", "4"], ["5", "5"], ["6", "6"]]},
+    "collage_gap": {"type": "select", "label": "Espacement", "default": "16", "choices": [
+        ["0", "Aucun"], ["8", "Fin"], ["16", "Moyen"], ["32", "Large"]]},
+    "collage_fit": {"type": "select", "label": "Ajustement", "default": "cover", "choices": [
+        ["cover", "Remplir les cases (recadré)"], ["contain", "Images entières"]]},
+    "collage_fmt": {"type": "select", "label": "Format", "default": "jpg", "choices": [["jpg", "JPG"], ["png", "PNG"]]},
+    "logo_pos": {"type": "select", "label": "Position du logo", "default": "br", "choices": [
+        ["br", "En bas à droite"], ["bl", "En bas à gauche"], ["tr", "En haut à droite"], ["tl", "En haut à gauche"],
+        ["center", "Au centre"]]},
+    "logo_size": {"type": "select", "label": "Taille du logo", "default": "medium", "choices": [
+        ["small", "Petit"], ["medium", "Moyen"], ["large", "Grand"]]},
+    "logo_opacity": {"type": "range", "label": "Opacité (%)", "default": 90, "min": 10, "max": 100},
+    "soundtrack_mode": {"type": "select", "label": "Bande-son", "default": "replace", "choices": [
+        ["replace", "Remplacer le son d'origine"], ["mix", "Mélanger avec le son d'origine"]]},
+    "rename_pattern": {"type": "text", "label": "Modèle de nom", "default": "Fichier {n}",
+                       "placeholder": "{n} numéro · {nom} nom d'origine · {date} date"},
+    "rename_start": {"type": "number", "label": "Premier numéro", "default": 1, "min": 0, "max": 999999},
+    "rename_digits": {"type": "select", "label": "Chiffres", "default": "0", "choices": [
+        ["0", "Automatique"], ["2", "01"], ["3", "001"], ["4", "0001"]]},
 }
 
 
@@ -401,32 +534,173 @@ PRESETS = [
      "site": "X", "target": "mp4", "desc": "Collez le lien d'un message X (Twitter) contenant une vidéo."},
     {"id": "web-pdf", "group": "En ligne", "label": "Page web → PDF", "icon": "web", "link": True, "web": True,
      "target": "pdf", "desc": "Collez l'adresse d'une page web pour l'enregistrer en PDF, en image ou en Markdown."},
-    # Outils
-    {"id": "discord", "group": "Outils", "label": "Compresser pour Discord", "icon": "video", "accept": ["@video"],
-     "target": "mp4", "options": {"target_mb": "10"},
-     "desc": "Vidéo en MP4 de 10 Mo maximum (taille réglable dans les options : 25, 50, 500 Mo…)."},
-    {"id": "auto-subs", "group": "Outils", "label": "Sous-titres automatiques", "icon": "subs", "accept": ["@video"],
-     "target": "mp4", "options": {"auto_subs": "burn"},
-     "desc": "La parole est transcrite (Whisper) puis incrustée dans la vidéo."},
-    {"id": "normalize", "group": "Outils", "label": "Normaliser le volume", "icon": "audio",
-     "accept": ["@audio", "@video"], "target": "=", "options": {"normalize": True},
-     "desc": "Volume homogène (norme EBU R128), dans le même format."},
-    {"id": "pdf-small", "group": "Outils", "label": "Compresser un PDF", "icon": "pdf", "accept": ["pdf"],
+    # Outils PDF
+    {"id": "pdf-merge", "group": "Outils PDF", "label": "Fusionner des PDF", "icon": "pdf", "accept": ["pdf", "@image"],
+     "combine": "combine_pdf", "desc": "Ajoutez plusieurs PDF (et des images), puis « Fusionner en PDF » : dans l'ordre de la liste."},
+    {"id": "pdf-split", "group": "Outils PDF", "label": "Diviser un PDF", "icon": "pdf", "accept": ["pdf"],
+     "target": "pdf_split", "open": True, "desc": "Un fichier par page, par groupes de pages ou selon vos plages."},
+    {"id": "pdf-extract", "group": "Outils PDF", "label": "Extraire des pages", "icon": "pdf", "accept": ["pdf"],
+     "target": "pdf_pages", "options": {"pages_mode": "keep"}, "open": True,
+     "desc": "Gardez seulement les pages choisies, dans l'ordre de votre choix (ex. 3, 1-2, 8-)."},
+    {"id": "pdf-remove", "group": "Outils PDF", "label": "Supprimer des pages", "icon": "pdf", "accept": ["pdf"],
+     "target": "pdf_pages", "options": {"pages_mode": "remove"}, "open": True, "desc": "Retirez des pages d'un PDF."},
+    {"id": "pdf-rotate", "group": "Outils PDF", "label": "Pivoter un PDF", "icon": "pdf", "accept": ["pdf"],
+     "target": "pdf_rotate", "open": True, "desc": "Faites pivoter toutes les pages ou seulement certaines."},
+    {"id": "pdf-protect", "group": "Outils PDF", "label": "Protéger un PDF", "icon": "lock", "accept": ["pdf"],
+     "target": "pdf_protect", "open": True, "desc": "Mot de passe à l'ouverture (chiffrement AES-256), restrictions possibles."},
+    {"id": "pdf-unlock", "group": "Outils PDF", "label": "Déverrouiller un PDF", "icon": "unlock", "accept": ["pdf"],
+     "target": "pdf_unlock", "open": True, "desc": "Retirez le mot de passe d'un PDF dont vous connaissez le mot de passe."},
+    {"id": "pdf-watermark", "group": "Outils PDF", "label": "Filigrane sur un PDF", "icon": "stamp", "accept": ["pdf"],
+     "target": "pdf_watermark", "open": True, "desc": "Texte en diagonale, répété ou dans un coin, avec l'opacité choisie."},
+    {"id": "pdf-number", "group": "Outils PDF", "label": "Numéroter les pages", "icon": "pdf", "accept": ["pdf"],
+     "target": "pdf_number", "open": True, "desc": "Ajoutez « 1, 2, 3… » ou « Page 1 sur 10 » sur chaque page."},
+    {"id": "pdf-ocr", "group": "Outils PDF", "label": "PDF cherchable (OCR)", "icon": "search", "accept": ["pdf"],
+     "target": "pdf_ocr", "desc": "Rend le texte des documents scannés sélectionnable et cherchable (reconnaissance de Windows)."},
+    {"id": "pdf-images", "group": "Outils PDF", "label": "Extraire les images", "icon": "image", "accept": ["pdf"],
+     "target": "pdf_images", "desc": "Récupère les images contenues dans un PDF, dans leur qualité d'origine."},
+    {"id": "pdf-small", "group": "Outils PDF", "label": "Compresser un PDF", "icon": "pdf", "accept": ["pdf"],
      "target": "pdf_small", "desc": "Allège un PDF (images recompressées, polices réduites)."},
-    {"id": "img-small", "group": "Outils", "label": "Compresser une image", "icon": "image",
+    # Outils image
+    {"id": "img-nobg", "group": "Outils image", "label": "Supprimer l'arrière-plan", "icon": "image", "accept": ["@image"],
+     "target": "img_nobg", "desc": "Détourage automatique par intelligence artificielle, sur cet ordinateur : PNG transparent."},
+    {"id": "img-resize", "group": "Outils image", "label": "Redimensionner", "icon": "image", "accept": ["@image"],
+     "target": "=", "open": "Retouches", "desc": "Changez la taille (50 %, 1920 px, agrandissement ×2…), dans le même format."},
+    {"id": "img-crop", "group": "Outils image", "label": "Recadrer", "icon": "image", "accept": ["@image"],
+     "target": "=", "options": {"img_ratio": "1:1"}, "open": "Retouches",
+     "desc": "Carré, 4:5 Instagram, 16:9, 9:16 stories… recadrage centré."},
+    {"id": "img-rotate", "group": "Outils image", "label": "Pivoter ou retourner", "icon": "image", "accept": ["@image"],
+     "target": "=", "options": {"rotate": "cw"}, "open": "Retouches", "desc": "Rotation de 90°, 180° ou effet miroir."},
+    {"id": "img-filter", "group": "Outils image", "label": "Noir et blanc et filtres", "icon": "image",
+     "accept": ["@image"], "target": "=", "options": {"img_adjust": "bw"}, "open": "Retouches",
+     "desc": "Noir et blanc, sépia, contraste automatique, netteté, flou, négatif."},
+    {"id": "img-watermark", "group": "Outils image", "label": "Filigrane sur des images", "icon": "stamp",
+     "accept": ["@image"], "target": "=", "options": {"wm_pos": "br"}, "open": "Filigrane",
+     "desc": "Signez vos photos : texte dans un coin, en diagonale ou répété."},
+    {"id": "img-upscale", "group": "Outils image", "label": "Agrandir une image", "icon": "image", "accept": ["@image"],
+     "target": "=", "options": {"img_resize": "x2"}, "open": "Retouches", "desc": "Agrandissement ×2 ou ×4 avec netteté."},
+    {"id": "img-small", "group": "Outils image", "label": "Compresser une image", "icon": "image",
      "accept": ["jpg", "jpeg", "jfif", "webp", "avif", "heic", "png", "bmp", "tiff", "tif"],
      "target": {"png": "webp", "bmp": "jpg", "tiff": "jpg", "tif": "jpg", "heic": "jpg", "*": "="},
      "options": {"quality": 75}, "desc": "Allège les images (qualité 75, ou taille maximale en Ko dans les options)."},
-    {"id": "extract", "group": "Outils", "label": "Extraire une archive", "icon": "archive", "accept": ["@archive"],
-     "target": "folder", "desc": "ZIP, RAR, 7Z, TAR, ISO… extraits dans un dossier."},
-    {"id": "zip", "group": "Outils", "label": "Compresser en ZIP", "icon": "archive", "combine": "combine_zip",
-     "desc": "Ajoutez plusieurs fichiers puis « Compresser en ZIP »."},
-    {"id": "concat", "group": "Outils", "label": "Fusionner vidéos ou audios", "icon": "video",
-     "accept": ["@video", "@audio"], "combine": "combine_concat",
-     "desc": "Mettez plusieurs vidéos ou audios bout à bout (dans l'ordre de la liste)."},
-    {"id": "add-subs", "group": "Outils", "label": "Ajouter des sous-titres", "icon": "subs",
+    {"id": "img-exif", "group": "Outils image", "label": "Retirer les données EXIF / GPS", "icon": "shield",
+     "accept": ["@image"], "target": "=", "options": {"strip_meta": True},
+     "desc": "Supprime l'appareil, la date et la position GPS avant de partager une photo."},
+    {"id": "img-collage", "group": "Outils image", "label": "Créer un collage", "icon": "grid", "accept": ["@image"],
+     "combine": "combine_collage", "desc": "Assemblez plusieurs images en une grille (colonnes, espacement, fond)."},
+    {"id": "img-qr", "group": "Outils image", "label": "Lire un QR code", "icon": "qr", "accept": ["@image"],
+     "target": "qr_read", "desc": "Lit les QR codes, codes-barres, Data Matrix et PDF417 d'une image ou d'une capture."},
+    {"id": "img-favicon", "group": "Outils image", "label": "Kit d'icônes (favicon)", "icon": "image",
+     "accept": ["@image"], "target": "favicon",
+     "desc": "Toutes les icônes d'un site web (favicon.ico, Apple, Android) et le code à coller."},
+    # Outils vidéo
+    {"id": "discord", "group": "Outils vidéo", "label": "Compresser pour Discord", "icon": "video", "accept": ["@video"],
+     "target": "mp4", "options": {"target_mb": "10"},
+     "desc": "Vidéo en MP4 de 10 Mo maximum (taille réglable dans les options : 25, 50, 500 Mo…)."},
+    {"id": "vid-cut", "group": "Outils vidéo", "label": "Couper une vidéo", "icon": "scissors", "accept": ["@video"],
+     "target": "=", "open": True, "desc": "Gardez un extrait : indiquez le début et la fin."},
+    {"id": "vid-vertical", "group": "Outils vidéo", "label": "Format vertical (Reels, TikTok)", "icon": "video",
+     "accept": ["@video"], "target": "mp4", "options": {"crop": "9:16b"},
+     "desc": "La vidéo entière en 9:16, sur un fond flou d'elle-même, prête pour Reels, TikTok et Shorts."},
+    {"id": "vid-crop", "group": "Outils vidéo", "label": "Recadrer une vidéo", "icon": "video", "accept": ["@video"],
+     "target": "=", "options": {"crop": "1:1"}, "open": "Retouches", "desc": "Carré, 9:16, 16:9, bandes noires retirées…"},
+    {"id": "vid-rotate", "group": "Outils vidéo", "label": "Pivoter une vidéo", "icon": "video", "accept": ["@video"],
+     "target": "=", "options": {"rotate": "cw"}, "open": "Retouches", "desc": "Rotation de 90°, 180° ou effet miroir."},
+    {"id": "vid-speed", "group": "Outils vidéo", "label": "Accélérer ou ralentir", "icon": "video", "accept": ["@video"],
+     "target": "=", "options": {"speed": "2"}, "open": "Retouches", "desc": "De 0,5× à 2×, son compris."},
+    {"id": "vid-reverse", "group": "Outils vidéo", "label": "Inverser ou boomerang", "icon": "retry",
+     "accept": ["@video"], "target": "mp4", "options": {"v_play": "boomerang"}, "open": "Retouches",
+     "desc": "Lecture à l'envers ou aller-retour (extraits de 3 minutes au plus)."},
+    {"id": "vid-stabilize", "group": "Outils vidéo", "label": "Stabiliser une vidéo", "icon": "video",
+     "accept": ["@video"], "target": "mp4", "options": {"stabilize": True}, "desc": "Corrige les tremblements d'une vidéo filmée à la main."},
+    {"id": "vid-watermark", "group": "Outils vidéo", "label": "Filigrane sur une vidéo", "icon": "stamp",
+     "accept": ["@video"], "target": "mp4", "options": {"wm_pos": "br", "wm_opacity": 60}, "open": "Filigrane",
+     "desc": "Ajoutez votre nom ou une mention dans un coin de la vidéo."},
+    {"id": "vid-logo", "group": "Outils vidéo", "label": "Ajouter un logo", "icon": "image",
+     "accept": ["@video", "@image"], "combine": "combine_logo",
+     "desc": "Ajoutez une vidéo et une image (PNG transparent idéalement), puis « Ajouter le logo »."},
+    {"id": "vid-soundtrack", "group": "Outils vidéo", "label": "Remplacer la bande-son", "icon": "audio",
+     "accept": ["@video", "@audio"], "combine": "combine_soundtrack",
+     "desc": "Ajoutez une vidéo et une musique : remplacez ou mélangez le son d'origine."},
+    {"id": "vid-mute", "group": "Outils vidéo", "label": "Retirer le son", "icon": "video", "accept": ["@video"],
+     "target": "=", "options": {"mute": True}, "desc": "Une vidéo muette, dans le même format."},
+    {"id": "auto-subs", "group": "Outils vidéo", "label": "Sous-titres automatiques", "icon": "subs", "accept": ["@video"],
+     "target": "mp4", "options": {"auto_subs": "burn"},
+     "desc": "La parole est transcrite (Whisper) puis incrustée dans la vidéo."},
+    {"id": "add-subs", "group": "Outils vidéo", "label": "Ajouter des sous-titres", "icon": "subs",
      "accept": ["@video", "@subs"], "combine": "combine_subs",
      "desc": "Ajoutez une vidéo et un fichier SRT, VTT ou ASS, puis « Ajouter les sous-titres »."},
+    {"id": "vid-sheet", "group": "Outils vidéo", "label": "Planche d'aperçu", "icon": "grid", "accept": ["@video"],
+     "target": "contact_sheet", "desc": "Une image qui résume la vidéo : 9 à 25 vignettes avec leur minutage."},
+    {"id": "vid-frames", "group": "Outils vidéo", "label": "Extraire des images", "icon": "image", "accept": ["@video"],
+     "target": "video_frames", "open": True, "desc": "Les images de la vidéo en JPG (1 par seconde, ou toutes), dans un ZIP."},
+    {"id": "vid-split", "group": "Outils vidéo", "label": "Découper en segments", "icon": "scissors",
+     "accept": ["@video"], "target": "media_split", "open": True,
+     "desc": "Des morceaux de 15 s, 1 min, 10 min… sans réencodage (stories, envoi par messagerie)."},
+    {"id": "concat", "group": "Outils vidéo", "label": "Fusionner vidéos ou audios", "icon": "video",
+     "accept": ["@video", "@audio"], "combine": "combine_concat",
+     "desc": "Mettez plusieurs vidéos ou audios bout à bout (dans l'ordre de la liste)."},
+    # Outils audio
+    {"id": "aud-cut", "group": "Outils audio", "label": "Couper un audio", "icon": "scissors", "accept": ["@audio"],
+     "target": "=", "open": True, "desc": "Gardez un extrait : indiquez le début et la fin."},
+    {"id": "normalize", "group": "Outils audio", "label": "Normaliser le volume", "icon": "audio",
+     "accept": ["@audio", "@video"], "target": "=", "options": {"normalize": True},
+     "desc": "Volume homogène (norme EBU R128), dans le même format."},
+    {"id": "aud-volume", "group": "Outils audio", "label": "Augmenter le volume", "icon": "audio", "accept": ["@audio"],
+     "target": "=", "options": {"gain": "6"}, "open": "Son", "desc": "De −12 à +10 dB, sans saturation."},
+    {"id": "aud-denoise", "group": "Outils audio", "label": "Réduire le bruit", "icon": "audio", "accept": ["@audio", "@video"],
+     "target": "=", "options": {"denoise": True}, "desc": "Atténue le souffle et le bruit de fond d'un enregistrement."},
+    {"id": "aud-bass", "group": "Outils audio", "label": "Renforcer les basses", "icon": "audio", "accept": ["@audio"],
+     "target": "=", "options": {"bass": "6"}, "open": "Son", "desc": "Des basses plus présentes, sans saturation."},
+    {"id": "aud-speed", "group": "Outils audio", "label": "Accélérer ou ralentir", "icon": "audio", "accept": ["@audio"],
+     "target": "=", "options": {"speed": "1.25"}, "open": "Son", "desc": "De 0,5× à 2×, sans changer la hauteur de la voix."},
+    {"id": "aud-karaoke", "group": "Outils audio", "label": "Retirer la voix (karaoké)", "icon": "audio",
+     "accept": ["@audio"], "target": "=", "options": {"karaoke": True},
+     "desc": "Atténue la voix enregistrée au centre (résultat variable selon le mixage)."},
+    {"id": "aud-reverse", "group": "Outils audio", "label": "Inverser un audio", "icon": "retry", "accept": ["@audio"],
+     "target": "=", "options": {"reverse": True}, "desc": "Lecture à l'envers."},
+    {"id": "aud-tags", "group": "Outils audio", "label": "Modifier les tags", "icon": "audio", "accept": ["@audio"],
+     "target": {"mp3": "mp3", "m4a": "m4a", "flac": "flac", "ogg": "ogg", "opus": "opus", "*": "mp3"},
+     "open": "Étiquettes", "desc": "Titre, artiste, album et année d'un morceau."},
+    {"id": "aud-cover", "group": "Outils audio", "label": "Ajouter une pochette", "icon": "image",
+     "accept": ["@audio", "@image"], "combine": "combine_cover",
+     "desc": "Ajoutez un audio et une image, puis « Ajouter la pochette » (sans réencodage)."},
+    {"id": "aud-split", "group": "Outils audio", "label": "Découper en morceaux", "icon": "scissors",
+     "accept": ["@audio"], "target": "media_split", "open": True, "desc": "Des morceaux de durée fixe, sans réencodage."},
+    {"id": "aud-ringtone", "group": "Outils audio", "label": "Sonnerie iPhone", "icon": "audio",
+     "accept": ["@audio", "@video"], "target": "m4r", "open": True,
+     "desc": "Un extrait de 40 secondes au plus, au format M4R des iPhone."},
+    # Outils fichiers
+    {"id": "file-info", "group": "Outils fichiers", "label": "Informations détaillées", "icon": "info",
+     "target": "info", "desc": "Tout sur un fichier : codecs, résolution, EXIF et GPS, pages, auteur, contenu d'archive, empreintes."},
+    {"id": "file-hash", "group": "Outils fichiers", "label": "Empreintes (SHA-256, MD5)", "icon": "hash",
+     "target": "hash", "desc": "Vérifiez qu'un fichier n'a pas été modifié ou qu'un téléchargement est complet."},
+    {"id": "file-protect", "group": "Outils fichiers", "label": "Protéger par mot de passe", "icon": "lock",
+     "target": "protect", "open": True,
+     "desc": "Archive 7Z ou ZIP chiffrée en AES-256. Pour tout regrouper : « Compresser en ZIP » avec un mot de passe."},
+    {"id": "file-split", "group": "Outils fichiers", "label": "Découper un gros fichier", "icon": "scissors",
+     "target": "split_vol", "open": True, "desc": "En parties de 25 Mo, 100 Mo, 4 Go… à rassembler avec 7-Zip."},
+    {"id": "file-clean", "group": "Outils fichiers", "label": "Nettoyer les métadonnées", "icon": "shield",
+     "accept": ["@image", "@video", "@audio", "pdf"], "target": {"pdf": "pdf_clean", "*": "="},
+     "options": {"strip_meta": True}, "desc": "Retire auteur, appareil, position GPS et commentaires avant de partager."},
+    {"id": "file-rename", "group": "Outils fichiers", "label": "Renommer en lot", "icon": "edit",
+     "combine": "combine_rename", "desc": "Des copies renommées selon un modèle : « Vacances {date} - {n} »…"},
+    {"id": "file-hashes", "group": "Outils fichiers", "label": "Empreintes d'un lot", "icon": "hash",
+     "combine": "combine_hash", "desc": "Un seul fichier texte avec l'empreinte SHA-256 et MD5 de chaque fichier."},
+    {"id": "zip", "group": "Outils fichiers", "label": "Compresser en ZIP", "icon": "archive", "combine": "combine_zip",
+     "desc": "Ajoutez plusieurs fichiers puis « Compresser en ZIP » (mot de passe possible)."},
+    {"id": "extract", "group": "Outils fichiers", "label": "Extraire une archive", "icon": "archive", "accept": ["@archive"],
+     "target": "folder", "desc": "ZIP, RAR, 7Z, TAR, ISO… extraits dans un dossier."},
+    # Créer
+    {"id": "make-qr", "group": "Créer", "label": "Créer un QR code", "icon": "qr", "panel": "qr",
+     "desc": "Lien, texte, Wi-Fi, contact, e-mail, SMS ou téléphone : en PNG, SVG ou PDF, aux couleurs voulues."},
+    {"id": "make-barcode", "group": "Créer", "label": "Créer un code-barres", "icon": "barcode", "panel": "barcode",
+     "desc": "EAN-13, UPC-A, Code 128, Code 39, ISBN… en PNG ou SVG."},
+    {"id": "make-tts", "group": "Créer", "label": "Lire un texte à voix haute", "icon": "audio", "panel": "tts",
+     "desc": "Tapez ou collez un texte : il est lu par une voix de Windows et enregistré en MP3."},
+    {"id": "make-screen", "group": "Créer", "label": "Enregistrer l'écran", "icon": "record", "panel": "screen",
+     "desc": "Une vidéo MP4 de votre écran, avec le son de votre micro si vous le souhaitez."},
+    {"id": "make-mic", "group": "Créer", "label": "Enregistrer le micro", "icon": "mic", "panel": "mic",
+     "desc": "Un enregistrement audio MP3 depuis le micro de votre choix."},
     # Image
     {"id": "image", "group": "Image", "label": "Convertisseur d'images", "icon": "image", "accept": ["@image"],
      "desc": "PNG, JPG, WEBP, HEIC, AVIF, TIFF, ICO, SVG… redimensionnez et compressez au passage."},
@@ -517,7 +791,23 @@ COMBINE = {
                      "families": ["video", "subs"], "needs": ["video", "subs"], "min": 2,
                      "options": [{"id": "subs_burn"}, {"id": "subs_style"}], "ext": "mp4"},
     "combine_zip": {"label": "Compresser en une archive", "button": "Compresser en ZIP", "families": "*",
-                    "options": [{"id": "zip_fmt"}], "ext": "zip"},
+                    "options": [{"id": "zip_fmt"}, {"id": "password", "label": "Mot de passe (facultatif)",
+                                                    "placeholder": "aucun"}], "ext": "zip"},
+    "combine_collage": {"label": "Créer un collage", "button": "Créer un collage", "families": ["image"],
+                        "options": [{"id": "collage_cols"}, {"id": "collage_gap"}, {"id": "collage_fit"}, {"id": "bg"},
+                                    {"id": "collage_fmt"}], "ext": "jpg"},
+    "combine_logo": {"label": "Ajouter le logo à la vidéo", "button": "Ajouter le logo", "families": ["video", "image"],
+                     "needs": ["video", "image"], "options": [{"id": "logo_pos"}, {"id": "logo_size"},
+                                                              {"id": "logo_opacity"}], "ext": "mp4"},
+    "combine_soundtrack": {"label": "Remplacer la bande-son", "button": "Remplacer la bande-son",
+                           "families": ["video", "audio"], "needs": ["video", "audio"],
+                           "options": [{"id": "soundtrack_mode"}], "ext": "mp4"},
+    "combine_cover": {"label": "Ajouter la pochette", "button": "Ajouter la pochette", "families": ["audio", "image"],
+                      "needs": ["audio", "image"], "options": [], "ext": "mp3"},
+    "combine_rename": {"label": "Renommer en lot (copies)", "button": "Renommer en lot", "families": "*", "min": 1,
+                       "options": [{"id": "rename_pattern"}, {"id": "rename_start"}, {"id": "rename_digits"}], "ext": ""},
+    "combine_hash": {"label": "Empreintes de tous les fichiers", "button": "Empreintes du lot", "families": "*",
+                     "options": [], "ext": "txt"},
 }
 
 
